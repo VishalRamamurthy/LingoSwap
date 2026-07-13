@@ -31,6 +31,28 @@ export interface TranslateResponse {
   targetLanguage: string;
 }
 
+export interface VoiceTranslateRequest {
+  /** Base64-encoded audio recording */
+  audioBase64: string;
+  /** MIME type of the audio (e.g. "audio/m4a", "audio/mp4") */
+  mimeType: string;
+  /** Target language name (e.g. "Spanish") */
+  targetLanguage: string;
+  /** Optional source language name. Omit for automatic detection. */
+  sourceLanguage?: string;
+}
+
+export interface VoiceTranslateOutput {
+  /** The transcribed text from the audio */
+  transcription: string;
+  /** The detected (or provided) source language name */
+  detectedLanguage: string;
+  /** The translated text */
+  translatedText: string;
+  /** The target language name */
+  targetLanguage: string;
+}
+
 export interface ErrorResponse {
   message: string;
 }

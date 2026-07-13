@@ -8,6 +8,7 @@ export type HistoryEntry = {
   sourceLanguage: string;
   targetLanguage: string;
   timestamp: number;
+  isVoice?: boolean;
 };
 
 type HistoryContextType = {
@@ -52,7 +53,8 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       timestamp: Date.now(),
     };
-    saveHistory([newEntry, ...history]);
+    const newHistory = [newEntry, ...history].slice(0, 100);
+    saveHistory(newHistory);
   };
 
   const deleteEntry = (id: string) => {

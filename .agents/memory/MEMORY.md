@@ -1,0 +1,2 @@
+- [api-zod barrel conflict](api-zod-barrel.md) — orval regenerates index.ts in split mode; naming schemas uniquely vs operationId avoids duplicate export errors.
+- [expo-av audio recording](expo-audio-recording.md) — expo-av works in Expo Go for recording; use expo-file-system to read URI as base64 for server upload.

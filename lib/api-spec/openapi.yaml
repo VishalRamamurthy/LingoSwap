@@ -51,6 +51,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /voice-translate:
+    post:
+      operationId: voiceTranslate
+      tags: [translation]
+      summary: Transcribe and translate audio
+      description: Transcribes recorded speech, detects its language, and translates it to the target language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceTranslateRequest"
+      responses:
+        "200":
+          description: Transcription and translation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceTranslateOutput"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -92,6 +117,45 @@ components:
       required:
         - translatedText
         - detectedLanguage
+        - targetLanguage
+    VoiceTranslateRequest:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+          description: Base64-encoded audio recording
+        mimeType:
+          type: string
+          description: MIME type of the audio (e.g. "audio/m4a", "audio/mp4")
+        targetLanguage:
+          type: string
+          description: Target language name (e.g. "Spanish")
+        sourceLanguage:
+          type: string
+          description: Optional source language name. Omit for automatic detection.
+      required:
+        - audioBase64
+        - mimeType
+        - targetLanguage
+    VoiceTranslateOutput:
+      type: object
+      properties:
+        transcription:
+          type: string
+          description: The transcribed text from the audio
+        detectedLanguage:
+          type: string
+          description: The detected (or provided) source language name
+        translatedText:
+          type: string
+          description: The translated text
+        targetLanguage:
+          type: string
+          description: The target language name
+      required:
+        - transcription
+        - detectedLanguage
+        - translatedText
         - targetLanguage
     ErrorResponse:
       type: object

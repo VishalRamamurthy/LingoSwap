@@ -23,7 +23,9 @@ import type {
   ErrorResponse,
   HealthStatus,
   TranslateRequest,
-  TranslateResponse
+  TranslateResponse,
+  VoiceTranslateOutput,
+  VoiceTranslateRequest
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -201,5 +203,77 @@ export const useTranslateText = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getTranslateTextMutationOptions(options));
+    }
+
+export const getVoiceTranslateUrl = () => {
+
+
+
+
+  return `/api/voice-translate`
+}
+
+/**
+ * Transcribes recorded speech, detects its language, and translates it to the target language
+ * @summary Transcribe and translate audio
+ */
+export const voiceTranslate = async (voiceTranslateRequest: VoiceTranslateRequest, options?: RequestInit): Promise<VoiceTranslateOutput> => {
+
+  return customFetch<VoiceTranslateOutput>(getVoiceTranslateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(voiceTranslateRequest)
+  }
+);}
+
+
+
+
+
+export const getVoiceTranslateMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voiceTranslate>>, TError,{data: BodyType<VoiceTranslateRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voiceTranslate>>, TError,{data: BodyType<VoiceTranslateRequest>}, TContext> => {
+
+const mutationKey = ['voiceTranslate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voiceTranslate>>, {data: BodyType<VoiceTranslateRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  voiceTranslate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoiceTranslateMutationResult = NonNullable<Awaited<ReturnType<typeof voiceTranslate>>>
+    export type VoiceTranslateMutationBody = BodyType<VoiceTranslateRequest>
+    export type VoiceTranslateMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Transcribe and translate audio
+ */
+export const useVoiceTranslate = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voiceTranslate>>, TError,{data: BodyType<VoiceTranslateRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voiceTranslate>>,
+        TError,
+        {data: BodyType<VoiceTranslateRequest>},
+        TContext
+      > => {
+      return useMutation(getVoiceTranslateMutationOptions(options));
     }
 

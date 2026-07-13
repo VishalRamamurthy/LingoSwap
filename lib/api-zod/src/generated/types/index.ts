@@ -10,3 +10,5 @@ export * from './errorResponse';
 export * from './healthStatus';
 export * from './translateRequest';
 export * from './translateResponse';
+export * from './voiceTranslateOutput';
+export * from './voiceTranslateRequest';

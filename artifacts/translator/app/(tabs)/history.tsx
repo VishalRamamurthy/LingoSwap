@@ -1,5 +1,13 @@
 import React from "react";
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, Platform } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  Platform,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { Feather } from "@expo/vector-icons";
@@ -14,19 +22,13 @@ export default function HistoryScreen() {
   const router = useRouter();
 
   const handleClearAll = () => {
-    if (Platform.OS === 'web') {
-      if (confirm('Are you sure you want to clear all history?')) {
-        clearHistory();
-      }
+    if (Platform.OS === "web") {
+      if (confirm("Clear all translation history?")) clearHistory();
     } else {
-      Alert.alert(
-        "Clear History",
-        "Are you sure you want to clear all translation history?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Clear", style: "destructive", onPress: clearHistory }
-        ]
-      );
+      Alert.alert("Clear History", "Remove all translation history?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Clear All", style: "destructive", onPress: clearHistory },
+      ]);
     }
   };
 
@@ -38,64 +40,110 @@ export default function HistoryScreen() {
         restoreSourceLang: item.sourceLanguage,
         restoreTargetLang: item.targetLanguage,
         restoreTranslatedText: item.translatedText,
-      }
+      },
     });
   };
 
   const renderItem = ({ item }: { item: HistoryEntry }) => (
-    <TouchableOpacity 
-      style={[styles.historyCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    <TouchableOpacity
+      style={[
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
       onPress={() => handleRestore(item)}
       activeOpacity={0.7}
     >
-      <View style={styles.cardHeader}>
-        <View style={styles.langPair}>
-          <Text style={[styles.langText, { color: colors.primary }]}>{item.sourceLanguage}</Text>
-          <Feather name="arrow-right" size={14} color={colors.mutedForeground} />
-          <Text style={[styles.langText, { color: colors.primary }]}>{item.targetLanguage}</Text>
+      <View style={styles.cardTop}>
+        <View style={styles.langRow}>
+          {item.isVoice && (
+            <View
+              style={[
+                styles.voiceBadge,
+                {
+                  backgroundColor: colors.accent + "18",
+                  borderColor: colors.accent + "40",
+                },
+              ]}
+            >
+              <Feather name="mic" size={10} color={colors.accent} />
+            </View>
+          )}
+          <Text style={[styles.langFrom, { color: colors.mutedForeground }]}>
+            {item.sourceLanguage}
+          </Text>
+          <Feather name="arrow-right" size={12} color={colors.border} />
+          <Text style={[styles.langTo, { color: colors.accent }]}>
+            {item.targetLanguage}
+          </Text>
         </View>
-        <View style={styles.cardActions}>
-          <Text style={[styles.timeText, { color: colors.mutedForeground }]}>
+        <View style={styles.cardMeta}>
+          <Text style={[styles.timeText, { color: colors.border }]}>
             {formatDistanceToNow(item.timestamp, { addSuffix: true })}
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={(e) => {
               e.stopPropagation();
               deleteEntry(item.id);
-            }} 
-            style={styles.deleteButton}
+            }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Feather name="trash-2" size={16} color={colors.mutedForeground} />
+            <Feather name="trash-2" size={15} color={colors.border} />
           </TouchableOpacity>
         </View>
       </View>
-      <View style={styles.textPair}>
-        <Text style={[styles.sourceText, { color: colors.foreground }]} numberOfLines={2}>{item.sourceText}</Text>
-        <Text style={[styles.translatedText, { color: colors.foreground }]} numberOfLines={3}>{item.translatedText}</Text>
-      </View>
+
+      <Text
+        style={[styles.sourceText, { color: colors.mutedForeground }]}
+        numberOfLines={1}
+      >
+        {item.sourceText}
+      </Text>
+      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+      <Text
+        style={[styles.translatedText, { color: colors.foreground }]}
+        numberOfLines={2}
+      >
+        {item.translatedText}
+      </Text>
     </TouchableOpacity>
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: Platform.OS === 'web' ? 67 : insets.top + 20 }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: Platform.OS === "web" ? 67 : insets.top + 12,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Text style={[styles.title, { color: colors.foreground }]}>History</Text>
         {history.length > 0 && (
-          <TouchableOpacity onPress={handleClearAll} style={styles.clearButton}>
-            <Text style={[styles.clearButtonText, { color: colors.destructive }]}>Clear All</Text>
+          <TouchableOpacity onPress={handleClearAll} hitSlop={{ top: 8, bottom: 8 }}>
+            <Text style={[styles.clearBtn, { color: colors.destructive }]}>
+              Clear
+            </Text>
           </TouchableOpacity>
         )}
       </View>
 
       {history.length === 0 ? (
         <View style={styles.emptyState}>
-          <View style={[styles.emptyIconContainer, { backgroundColor: colors.card }]}>
-            <Feather name="clock" size={32} color={colors.mutedForeground} />
+          <View
+            style={[
+              styles.emptyIcon,
+              { backgroundColor: colors.secondary },
+            ]}
+          >
+            <Feather name="clock" size={28} color={colors.border} />
           </View>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No History</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+            No translations yet
+          </Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Your recent translations will appear here.
+            Your translated phrases will appear here
           </Text>
         </View>
       ) : (
@@ -103,8 +151,15 @@ export default function HistoryScreen() {
           data={history}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
+          contentContainerStyle={[
+            styles.list,
+            {
+              paddingBottom:
+                Platform.OS === "web" ? 104 : insets.bottom + 100,
+            },
+          ]}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!!history.length}
         />
       )}
     </View>
@@ -112,94 +167,108 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "bold",
+    fontSize: 26,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
   },
-  clearButton: {
-    padding: 8,
-  },
-  clearButtonText: {
-    fontSize: 16,
+  clearBtn: {
+    fontSize: 15,
     fontWeight: "500",
+    fontFamily: "Inter_500Medium",
   },
-  listContent: {
+  list: {
     padding: 16,
-    gap: 16,
+    gap: 12,
   },
-  historyCard: {
+  card: {
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
+    gap: 8,
   },
-  cardHeader: {
+  cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
   },
-  langPair: {
+  langRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  langText: {
-    fontSize: 14,
-    fontWeight: "600",
+  voiceBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cardActions: {
+  langFrom: {
+    fontSize: 13,
+    fontWeight: "500",
+    fontFamily: "Inter_500Medium",
+  },
+  langTo: {
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "Inter_600SemiBold",
+  },
+  cardMeta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
   timeText: {
     fontSize: 12,
+    fontFamily: "Inter_400Regular",
   },
-  deleteButton: {
-    padding: 4,
-  },
-  textPair: {
-    gap: 8,
+  divider: {
+    height: StyleSheet.hairlineWidth,
   },
   sourceText: {
-    fontSize: 16,
-    opacity: 0.8,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
   },
   translatedText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "500",
+    lineHeight: 24,
+    fontFamily: "Inter_500Medium",
   },
   emptyState: {
     flex: 1,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
     padding: 40,
   },
-  emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: "center",
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: "center",
-    marginBottom: 20,
+    justifyContent: "center",
+    marginBottom: 4,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 8,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
+    fontFamily: "Inter_400Regular",
   },
 });

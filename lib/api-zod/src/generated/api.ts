@@ -38,3 +38,22 @@ export const TranslateTextResponse = zod.object({
 })
 
 
+/**
+ * Transcribes recorded speech, detects its language, and translates it to the target language
+ * @summary Transcribe and translate audio
+ */
+export const VoiceTranslateBody = zod.object({
+  "audioBase64": zod.string().describe('Base64-encoded audio recording'),
+  "mimeType": zod.string().describe('MIME type of the audio (e.g. \"audio\/m4a\", \"audio\/mp4\")'),
+  "targetLanguage": zod.string().describe('Target language name (e.g. \"Spanish\")'),
+  "sourceLanguage": zod.string().optional().describe('Optional source language name. Omit for automatic detection.')
+})
+
+export const VoiceTranslateResponse = zod.object({
+  "transcription": zod.string().describe('The transcribed text from the audio'),
+  "detectedLanguage": zod.string().describe('The detected (or provided) source language name'),
+  "translatedText": zod.string().describe('The translated text'),
+  "targetLanguage": zod.string().describe('The target language name')
+})
+
+
