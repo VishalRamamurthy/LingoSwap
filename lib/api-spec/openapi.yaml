@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: translation
+    description: Translation operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /translate:
+    post:
+      operationId: translateText
+      tags: [translation]
+      summary: Translate text
+      description: Detects the source language (unless provided) and translates text into the target language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranslateRequest"
+      responses:
+        "200":
+          description: Translation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +60,43 @@ components:
           type: string
       required:
         - status
-
+    TranslateRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The text to translate
+          minLength: 1
+          maxLength: 5000
+        sourceLanguage:
+          type: string
+          description: Optional source language name (e.g. "French"). Omit or set to "auto" for automatic detection.
+        targetLanguage:
+          type: string
+          description: Target language name (e.g. "Spanish")
+      required:
+        - text
+        - targetLanguage
+    TranslateResponse:
+      type: object
+      properties:
+        translatedText:
+          type: string
+          description: The translated text
+        detectedLanguage:
+          type: string
+          description: The detected (or provided) source language name
+        targetLanguage:
+          type: string
+          description: The target language name
+      required:
+        - translatedText
+        - detectedLanguage
+        - targetLanguage
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message

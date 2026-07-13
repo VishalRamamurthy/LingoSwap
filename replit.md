@@ -1,6 +1,6 @@
-# [Project name]
+# Translator
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile app that auto-detects the language of any text and translates it into a language of your choice.
 
 ## Run & Operate
 
@@ -22,15 +22,23 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/translator/` — Expo mobile app (translate + history screens, tabs)
+- `artifacts/api-server/src/routes/translate.ts` — POST /api/translate endpoint
+- `lib/api-spec/openapi.yaml` — API contract (source of truth)
+- `lib/integrations-openai-ai-server/` — OpenAI client via Replit AI Integrations proxy
+- `artifacts/translator/contexts/HistoryContext.tsx` — AsyncStorage-backed history
+- `artifacts/translator/constants/colors.ts` — theme tokens
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Translation runs server-side through the Replit AI Integrations OpenAI proxy (gpt-5.4-mini, JSON response mode) — no user API key needed
+- Translation history is stored on-device with AsyncStorage; no database is provisioned
+- Auto-detect is the default; passing `sourceLanguage` skips detection and echoes it back
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Type/paste text, auto-detect its language, translate to a chosen target language
+- Manual source-language override, copy-to-clipboard, on-device history with restore/delete/clear
 
 ## User preferences
 

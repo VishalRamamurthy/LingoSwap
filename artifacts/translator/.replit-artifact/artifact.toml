@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Translator"
+version = "1.0.0"
+id = "artifacts/translator"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 22234
+
+[services.development]
+run = "pnpm --filter @workspace/translator run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/translator", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/translator", "run", "serve" ]
+
+[services.env]
+PORT = "22234"
+BASE_PATH = "/"
