@@ -4,12 +4,14 @@ A mobile app that auto-detects the language of any text and translates it into a
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm install` — install dependencies after import or checkout
+- `pnpm --filter @workspace/api-server run dev` — run the API server
+- `pnpm --filter @workspace/translator run dev` — run the Expo app
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL` for translation
 
 ## Stack
 
@@ -31,7 +33,7 @@ A mobile app that auto-detects the language of any text and translates it into a
 
 ## Architecture decisions
 
-- Translation runs server-side through the Replit AI Integrations OpenAI proxy (gpt-5.4-mini, JSON response mode) — no user API key needed
+- Translation runs server-side through the OpenAI API using the user's own API key (gpt-5.4-mini, JSON response mode)
 - Translation history is stored on-device with AsyncStorage; no database is provisioned
 - Auto-detect is the default; passing `sourceLanguage` skips detection and echoes it back
 
@@ -46,7 +48,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **OpenAI quota:** If translation fails with `HTTP 429` / `insufficient_quota`, the OpenAI account has no usable credits. Add billing details or purchase credits at https://platform.openai.com/account/billing.
+- **Expo FileSystem types:** The app uses the legacy `readAsStringAsync` API with string encoding constants because the newer `File` class API is not available in all Expo builds.
+- **Run workflows after `pnpm install`:** Workflows fail with "command not found" until dependencies are installed.
 
 ## Pointers
 
