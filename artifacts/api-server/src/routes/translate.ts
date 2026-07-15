@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { APIError } from "openai";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { TranslateTextBody } from "@workspace/api-zod";
 
@@ -74,26 +73,7 @@ router.post("/translate", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Translation request failed");
-
-    if (err instanceof APIError && err.status === 429) {
-      res.status(429).json({
-        message:
-          "OpenAI quota exceeded. Please add billing details or credits to your OpenAI account.",
-      });
-      return;
-    }
-
-    const statusCode = err instanceof APIError ? err.status ?? 502 : 502;
-    const message =
-      err instanceof APIError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : "Translation failed. Please try again.";
-
-    res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 502).json({
-      message,
-    });
+    res.status(502).json({ message: "Translation failed. Please try again." });
   }
 });
 

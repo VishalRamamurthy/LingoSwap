@@ -18,7 +18,7 @@ export function useColors() {
   const scheme = useColorScheme();
   const palette =
     scheme === "dark" && "dark" in colors
-      ? (colors as { light: typeof colors.light; dark: typeof colors.light }).dark
+      ? (colors as unknown as { light: typeof colors.light; dark: typeof colors.light }).dark
       : colors.light;
   return { ...palette, radius: colors.radius };
 }

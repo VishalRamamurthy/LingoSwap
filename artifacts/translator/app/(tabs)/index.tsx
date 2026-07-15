@@ -211,7 +211,7 @@ export default function TranslateScreen() {
       if (!uri) throw new Error("No recording URI");
 
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: "base64",
+        encoding: "base64" as FileSystem.EncodingType,
       });
 
       voiceTranslateMutation.mutate(
