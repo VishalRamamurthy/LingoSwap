@@ -1,6 +1,6 @@
 ---
-name: ElevenLabs and DeepL setup
-description: Which voice IDs work on ElevenLabs free tier, and DeepL free-tier key format/URL.
+name: ElevenLabs, DeepL, and AssemblyAI setup
+description: Which voice IDs work on ElevenLabs free tier, DeepL free-tier key format/URL, and AssemblyAI transcription setup.
 ---
 
 ## ElevenLabs
@@ -11,6 +11,17 @@ description: Which voice IDs work on ElevenLabs free tier, and DeepL free-tier k
 - Secret name: `ELEVENLABS_API_KEY`.
 
 **Why:** ElevenLabs moved most named/library voices to paid-only in 2024/2025. Always test a voice ID before shipping.
+
+## AssemblyAI (Speech-to-Text)
+
+- Replaced OpenAI Whisper (`gpt-4o-mini-transcribe` and `whisper-1` both 403'd — project-level restriction on the OpenAI key).
+- Uses REST API (no SDK): upload audio → submit transcript job → poll until `status === "completed"`.
+- Auto-detects audio format; no need to specify format in the request.
+- Secret name: `ASSEMBLYAI_API_KEY`.
+- Implementation: `lib/integrations-openai-ai-server/src/audio/client.ts` — `speechToText()` function.
+- Polling: 1-second intervals, 60-second timeout.
+
+**Why:** The OpenAI project tied to `AI_INTEGRATIONS_OPENAI_API_KEY` blocked all audio transcription models. AssemblyAI has no such restriction and auto-detects format.
 
 ## DeepL
 
