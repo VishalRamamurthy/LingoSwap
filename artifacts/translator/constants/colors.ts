@@ -1,59 +1,59 @@
 const colors = {
   light: {
-    text: "#05051a",
-    tint: "#262b4a",
+    text: "#000000",
+    tint: "#000000",
 
-    background: "#fcfcfd",
-    foreground: "#05051a",
+    background: "#FFFFFF",
+    foreground: "#000000",
 
-    card: "#ffffff",
-    cardForeground: "#05051a",
+    card: "#FFFFFF",
+    cardForeground: "#000000",
 
-    primary: "#262b4a", // Deep Indigo
-    primaryForeground: "#ffffff",
+    primary: "#000000",
+    primaryForeground: "#FFFFFF",
 
-    secondary: "#f0f2f5",
-    secondaryForeground: "#121424",
+    secondary: "#F5F5F5",
+    secondaryForeground: "#000000",
 
-    muted: "#f0f2f5",
-    mutedForeground: "#6b7280",
+    muted: "#F5F5F5",
+    mutedForeground: "#666666",
 
-    accent: "#ff6b6b", // Coral
-    accentForeground: "#ffffff",
+    accent: "#FF2A00", // Brutalist red
+    accentForeground: "#FFFFFF",
 
-    destructive: "#ef4444",
-    destructiveForeground: "#ffffff",
+    destructive: "#FF2A00",
+    destructiveForeground: "#FFFFFF",
 
-    border: "#e5e7eb",
-    input: "#e5e7eb",
+    border: "#000000",
+    input: "#000000",
   },
   dark: {
-    text: "#fcfcfd",
-    tint: "#828ab5",
+    text: "#FFFFFF",
+    tint: "#FF2A00",
 
-    background: "#05051a", // Very deep indigo background
-    foreground: "#fcfcfd",
+    background: "#0A0A0A",
+    foreground: "#FFFFFF",
 
-    card: "#121424",
-    cardForeground: "#fcfcfd",
+    card: "#111111",
+    cardForeground: "#FFFFFF",
 
-    primary: "#ffffff", 
-    primaryForeground: "#05051a",
+    primary: "#FFFFFF",
+    primaryForeground: "#000000",
 
-    secondary: "#1a1d33",
-    secondaryForeground: "#fcfcfd",
+    secondary: "#1A1A1A",
+    secondaryForeground: "#FFFFFF",
 
-    muted: "#1a1d33",
-    mutedForeground: "#a1a1aa",
+    muted: "#1A1A1A",
+    mutedForeground: "#999999",
 
-    accent: "#ff6b6b", // Coral
-    accentForeground: "#ffffff",
+    accent: "#FF2A00",
+    accentForeground: "#FFFFFF",
 
-    destructive: "#ef4444",
-    destructiveForeground: "#ffffff",
+    destructive: "#FF2A00",
+    destructiveForeground: "#FFFFFF",
 
-    border: "#262b4a",
-    input: "#262b4a",
+    border: "#FFFFFF",
+    input: "#FFFFFF",
   },
 
   radius: 16,

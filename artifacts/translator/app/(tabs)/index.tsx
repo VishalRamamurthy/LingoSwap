@@ -383,25 +383,25 @@ export default function TranslateScreen() {
           style={[
             styles.langChip,
             {
-              backgroundColor: colors.accent + "18",
-              borderColor: colors.accent + "40",
+              backgroundColor: colors.accent,
+              borderColor: colors.border,
             },
           ]}
           onPress={() => setIsTargetSelectorOpen(true)}
         >
           <Text
-            style={[styles.langChipText, { color: colors.accent }]}
+            style={[styles.langChipText, { color: colors.accentForeground }]}
             numberOfLines={1}
           >
             {targetLanguage}
           </Text>
-          <Feather name="chevron-down" size={14} color={colors.accent} />
+          <Feather name="chevron-down" size={14} color={colors.accentForeground} />
         </TouchableOpacity>
       </View>
 
       {/* Mode toggle */}
       <View style={[styles.modeRow, { backgroundColor: colors.background }]}>
-        <View style={[styles.modePill, { backgroundColor: colors.secondary }]}>
+        <View style={[styles.modePill, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
           <TouchableOpacity
             style={[
               styles.modeOption,
@@ -558,7 +558,7 @@ export default function TranslateScreen() {
               <TouchableOpacity
                 style={[
                   styles.translateBtn,
-                  { backgroundColor: colors.primary },
+                  { backgroundColor: colors.accent },
                   (!sourceText.trim() || isLoading) && { opacity: 0.45 },
                 ]}
                 onPress={handleTranslate}
@@ -603,7 +603,6 @@ export default function TranslateScreen() {
               {
                 backgroundColor: colors.card,
                 borderColor: colors.border,
-                shadowColor: colors.primary,
               },
             ]}
           >
@@ -709,7 +708,8 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
-    alignItems: "center",
+    alignItems: "flex-start",
+    borderBottomWidth: 3,
   },
   wordmark: {
     fontSize: 26,
@@ -723,7 +723,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   langChip: {
     flex: 1,
@@ -733,7 +732,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 3,
     gap: 6,
   },
   langChipText: {
@@ -753,6 +752,7 @@ const styles = StyleSheet.create({
   modePill: {
     flexDirection: "row",
     borderRadius: 12,
+    borderWidth: 3,
     padding: 4,
   },
   modeOption: {
@@ -816,8 +816,12 @@ const styles = StyleSheet.create({
   // Text input
   inputCard: {
     borderRadius: 16,
-    borderWidth: 1,
-    overflow: "hidden",
+    borderWidth: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
   },
   input: {
     padding: 16,
@@ -832,7 +836,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 3,
   },
   charCount: {
     fontSize: 13,
@@ -845,7 +849,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 9,
     borderRadius: 100,
+    borderWidth: 3,
+    borderColor: "#000",
     minWidth: 110,
+    shadowColor: "#000",
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   translateBtnText: {
     fontSize: 15,
@@ -871,12 +882,13 @@ const styles = StyleSheet.create({
   // Result
   resultCard: {
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 3,
     padding: 20,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 5, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 5,
     gap: 12,
   },
   resultHeaderRow: {
