@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
+import { speechToText, ensureCompatibleFormat } from "@workspace/integrations-openai-ai-server/audio";
 import { VoiceTranslateBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
 import {
@@ -24,12 +24,13 @@ router.post("/voice-translate", async (req, res) => {
   const autoDetect = !sourceLanguage || sourceLanguage.toLowerCase() === "auto";
 
   try {
-    const audioBuffer = Buffer.from(audioBase64, "base64");
+    const rawBuffer = Buffer.from(audioBase64, "base64");
+    const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
 
-    // Step 1: Transcribe the audio (Whisper — unchanged)
+    // Step 1: Transcribe the audio with Whisper (auto-detected format)
     let transcription: string;
     try {
-      transcription = await speechToText(audioBuffer);
+      transcription = await speechToText(audioBuffer, format);
     } catch (err) {
       req.log.error({ err }, "Speech-to-text failed");
       res.status(502).json({ message: "Could not transcribe audio. Please try again." });

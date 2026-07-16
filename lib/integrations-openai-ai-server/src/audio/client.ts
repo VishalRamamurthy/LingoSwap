@@ -216,7 +216,7 @@ export async function textToSpeechStream(
   })();
 }
 
-/** Speech-to-Text using gpt-4o-mini-transcribe. */
+/** Speech-to-Text using whisper-1. */
 export async function speechToText(
   audioBuffer: Buffer,
   format: "wav" | "mp3" | "webm" = "wav"
@@ -224,7 +224,7 @@ export async function speechToText(
   const file = await toFile(audioBuffer, `audio.${format}`);
   const response = await openai.audio.transcriptions.create({
     file,
-    model: "gpt-4o-mini-transcribe",
+    model: "whisper-1",
   });
   return response.text;
 }
@@ -237,7 +237,7 @@ export async function speechToTextStream(
   const file = await toFile(audioBuffer, `audio.${format}`);
   const stream = await openai.audio.transcriptions.create({
     file,
-    model: "gpt-4o-mini-transcribe",
+    model: "whisper-1",
     stream: true,
   });
 
