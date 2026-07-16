@@ -3,10 +3,10 @@ import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
 import { VoiceTranslateBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
 import {
-  translateWithGoogle,
+  translateWithDeepL,
   TranslationConfigError,
   TranslationApiError,
-} from "../lib/google-translate";
+} from "../lib/deepl-translate";
 
 const router: IRouter = Router();
 
@@ -41,8 +41,8 @@ router.post("/voice-translate", async (req, res) => {
       return;
     }
 
-    // Step 2: Translate with Google Cloud Translation (also detects language)
-    const result = await translateWithGoogle(
+    // Step 2: Translate with DeepL (also detects language)
+    const result = await translateWithDeepL(
       transcription,
       targetLanguage,
       autoDetect ? undefined : sourceLanguage,

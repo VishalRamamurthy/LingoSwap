@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { TranslateTextBody } from "@workspace/api-zod";
 import {
-  translateWithGoogle,
+  translateWithDeepL,
   TranslationConfigError,
   TranslationApiError,
-} from "../lib/google-translate";
+} from "../lib/deepl-translate";
 
 const router: IRouter = Router();
 
@@ -22,7 +22,7 @@ router.post("/translate", async (req, res) => {
   const autoDetect = !sourceLanguage || sourceLanguage.toLowerCase() === "auto";
 
   try {
-    const result = await translateWithGoogle(
+    const result = await translateWithDeepL(
       text,
       targetLanguage,
       autoDetect ? undefined : sourceLanguage,
