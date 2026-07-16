@@ -19,8 +19,11 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
+import * as Location from "expo-location";
 import { LANGUAGES } from "@/constants/languages";
+import { COUNTRY_TO_LANGUAGE } from "@/constants/countryLanguages";
 import LanguageSelector from "@/components/LanguageSelector";
+import SpeakerButton from "@/components/SpeakerButton";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, {
   useSharedValue,
@@ -50,7 +53,38 @@ export default function TranslateScreen() {
   const [isSourceSelectorOpen, setIsSourceSelectorOpen] = useState(false);
   const [isTargetSelectorOpen, setIsTargetSelectorOpen] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
+  const userChangedTargetRef = useRef(false);
   const { addEntry } = useHistory();
+
+  // Location-based target language suggestion (runs once on launch)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Lowest,
+        });
+        const places = await Location.reverseGeocodeAsync({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        const countryCode = places[0]?.isoCountryCode?.toUpperCase();
+        if (!countryCode) return;
+        const language = COUNTRY_TO_LANGUAGE[countryCode];
+        if (language && !cancelled && !userChangedTargetRef.current) {
+          setTargetLanguage(language);
+        }
+      } catch {
+        // Location unavailable — keep the default target language
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const translateMutation = useTranslateText();
   const voiceTranslateMutation = useVoiceTranslate();
@@ -608,21 +642,38 @@ export default function TranslateScreen() {
 
             {/* Source text */}
             {sourceText ? (
-              <Text
-                style={[styles.resultSourceText, { color: colors.mutedForeground }]}
-                numberOfLines={3}
-              >
-                {sourceText}
-              </Text>
+              <View style={styles.resultTextRow}>
+                <Text
+                  style={[
+                    styles.resultSourceText,
+                    { color: colors.mutedForeground, flex: 1 },
+                  ]}
+                  numberOfLines={3}
+                >
+                  {sourceText}
+                </Text>
+                <SpeakerButton
+                  text={sourceText}
+                  language={detectedLang || (sourceLanguage !== "auto" ? sourceLanguage : undefined)}
+                />
+              </View>
             ) : null}
 
             {/* Divider */}
             <View style={[styles.resultDivider, { backgroundColor: colors.border }]} />
 
             {/* Translation */}
-            <Text style={[styles.resultTranslation, { color: colors.foreground }]}>
-              {translatedText}
-            </Text>
+            <View style={styles.resultTextRow}>
+              <Text
+                style={[
+                  styles.resultTranslation,
+                  { color: colors.foreground, flex: 1 },
+                ]}
+              >
+                {translatedText}
+              </Text>
+              <SpeakerButton text={translatedText} language={targetLanguage} size={20} />
+            </View>
           </View>
         ) : null}
       </ScrollView>
@@ -639,7 +690,10 @@ export default function TranslateScreen() {
       <LanguageSelector
         visible={isTargetSelectorOpen}
         onClose={() => setIsTargetSelectorOpen(false)}
-        onSelect={setTargetLanguage}
+        onSelect={(lang) => {
+          userChangedTargetRef.current = true;
+          setTargetLanguage(lang);
+        }}
         languages={LANGUAGES}
         selected={targetLanguage}
         title="Translate to"
@@ -848,6 +902,11 @@ const styles = StyleSheet.create({
   },
   resultActionBtn: {
     padding: 6,
+  },
+  resultTextRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
   },
   resultSourceText: {
     fontSize: 15,

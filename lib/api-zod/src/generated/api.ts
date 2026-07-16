@@ -57,3 +57,22 @@ export const VoiceTranslateResponse = zod.object({
 })
 
 
+/**
+ * Generates spoken audio for the given text using ElevenLabs and returns it as base64
+ * @summary Convert text to speech
+ */
+export const textToSpeechBodyTextMax = 5000;
+
+
+
+export const TextToSpeechBody = zod.object({
+  "text": zod.string().min(1).max(textToSpeechBodyTextMax).describe('The text to speak aloud'),
+  "language": zod.string().optional().describe('Optional language name of the text (e.g. \"Spanish\")')
+})
+
+export const TextToSpeechResponse = zod.object({
+  "audioBase64": zod.string().describe('Base64-encoded MP3 audio'),
+  "mimeType": zod.string().describe('MIME type of the audio (audio\/mpeg)')
+})
+
+

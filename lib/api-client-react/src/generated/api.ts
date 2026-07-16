@@ -24,6 +24,8 @@ import type {
   HealthStatus,
   TranslateRequest,
   TranslateResponse,
+  TtsOutput,
+  TtsRequest,
   VoiceTranslateOutput,
   VoiceTranslateRequest
 } from './api.schemas';
@@ -275,5 +277,77 @@ export const useVoiceTranslate = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getVoiceTranslateMutationOptions(options));
+    }
+
+export const getTextToSpeechUrl = () => {
+
+
+
+
+  return `/api/tts`
+}
+
+/**
+ * Generates spoken audio for the given text using ElevenLabs and returns it as base64
+ * @summary Convert text to speech
+ */
+export const textToSpeech = async (ttsRequest: TtsRequest, options?: RequestInit): Promise<TtsOutput> => {
+
+  return customFetch<TtsOutput>(getTextToSpeechUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(ttsRequest)
+  }
+);}
+
+
+
+
+
+export const getTextToSpeechMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof textToSpeech>>, TError,{data: BodyType<TtsRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof textToSpeech>>, TError,{data: BodyType<TtsRequest>}, TContext> => {
+
+const mutationKey = ['textToSpeech'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof textToSpeech>>, {data: BodyType<TtsRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  textToSpeech(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TextToSpeechMutationResult = NonNullable<Awaited<ReturnType<typeof textToSpeech>>>
+    export type TextToSpeechMutationBody = BodyType<TtsRequest>
+    export type TextToSpeechMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Convert text to speech
+ */
+export const useTextToSpeech = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof textToSpeech>>, TError,{data: BodyType<TtsRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof textToSpeech>>,
+        TError,
+        {data: BodyType<TtsRequest>},
+        TContext
+      > => {
+      return useMutation(getTextToSpeechMutationOptions(options));
     }
 

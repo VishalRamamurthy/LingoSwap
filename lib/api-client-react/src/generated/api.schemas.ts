@@ -53,6 +53,24 @@ export interface VoiceTranslateOutput {
   targetLanguage: string;
 }
 
+export interface TtsRequest {
+  /**
+     * The text to speak aloud
+     * @minLength 1
+     * @maxLength 5000
+     */
+  text: string;
+  /** Optional language name of the text (e.g. "Spanish") */
+  language?: string;
+}
+
+export interface TtsOutput {
+  /** Base64-encoded MP3 audio */
+  audioBase64: string;
+  /** MIME type of the audio (audio/mpeg) */
+  mimeType: string;
+}
+
 export interface ErrorResponse {
   message: string;
 }

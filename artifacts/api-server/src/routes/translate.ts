@@ -1,6 +1,10 @@
 import { Router, type IRouter } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
 import { TranslateTextBody } from "@workspace/api-zod";
+import {
+  translateWithGoogle,
+  TranslationConfigError,
+  TranslationApiError,
+} from "../lib/google-translate";
 
 const router: IRouter = Router();
 
@@ -18,60 +22,26 @@ router.post("/translate", async (req, res) => {
   const autoDetect = !sourceLanguage || sourceLanguage.toLowerCase() === "auto";
 
   try {
-    const systemPrompt = [
-      "You are a professional translator.",
-      autoDetect
-        ? "Detect the language of the user's text, then translate it."
-        : `The user's text is in ${sourceLanguage}. Translate it.`,
-      `Translate the text into ${targetLanguage}.`,
-      "Preserve meaning, tone, and formatting (line breaks, punctuation).",
-      'Respond ONLY with a JSON object of this exact shape: {"detectedLanguage": "<English name of the source language>", "translatedText": "<the translation>"}',
-      "Do not add explanations, notes, or markdown fences.",
-    ].join(" ");
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-5.4-mini",
-      max_completion_tokens: 8192,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: text },
-      ],
-      response_format: { type: "json_object" },
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) {
-      res.status(502).json({ message: "Translation service returned no result" });
-      return;
-    }
-
-    let detectedLanguage: string;
-    let translatedText: string;
-    try {
-      const json = JSON.parse(raw) as {
-        detectedLanguage?: unknown;
-        translatedText?: unknown;
-      };
-      if (
-        typeof json.detectedLanguage !== "string" ||
-        typeof json.translatedText !== "string"
-      ) {
-        throw new Error("Malformed translation payload");
-      }
-      detectedLanguage = json.detectedLanguage;
-      translatedText = json.translatedText;
-    } catch {
-      req.log.error({ raw }, "Failed to parse translation model output");
-      res.status(502).json({ message: "Translation service returned an unexpected response" });
-      return;
-    }
+    const result = await translateWithGoogle(
+      text,
+      targetLanguage,
+      autoDetect ? undefined : sourceLanguage,
+    );
 
     res.json({
-      translatedText,
-      detectedLanguage: autoDetect ? detectedLanguage : sourceLanguage,
+      translatedText: result.translatedText,
+      detectedLanguage: result.detectedLanguage,
       targetLanguage,
     });
   } catch (err) {
+    if (err instanceof TranslationConfigError) {
+      res.status(503).json({ message: err.message });
+      return;
+    }
+    if (err instanceof TranslationApiError && err.status === 400) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     req.log.error({ err }, "Translation request failed");
     res.status(502).json({ message: "Translation failed. Please try again." });
   }
