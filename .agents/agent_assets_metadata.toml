@@ -35,3 +35,9 @@ id = "DQ2k1m9ARmyBz5adfmGzY"
 uri = "file://screenshots/variant-brutalist.jpg"
 type = "image"
 title = "Brutalist LingoSwap"
+
+[[outputs]]
+id = "_MzjC2jmkXjlAVzm1SWbA"
+uri = "file://screenshots/variant-brutalist-v2.jpg"
+type = "image"
+title = "Brutalist v2 — Rounded, Same Font, Original Vibe"
