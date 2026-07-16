@@ -709,6 +709,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
+    alignItems: "center",
   },
   wordmark: {
     fontSize: 26,
@@ -844,12 +845,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 9,
     borderRadius: 100,
+    minWidth: 110,
   },
   translateBtnText: {
     fontSize: 15,
     fontWeight: "600",
     color: "#fff",
     fontFamily: "Inter_600SemiBold",
+    includeFontPadding: false,
   },
   // Error
   errorCard: {
