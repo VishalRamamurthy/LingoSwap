@@ -1,8 +1,37 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "hCSfAJ6HcTyf_OwMg8SxD"
 uri = "file://artifacts/translator/assets/images/icon.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "SJ7xSn4w5Yc2kSL0HmrvB"
+uri = "file://screenshots/variant-current.jpg"
+type = "image"
+title = "Current LingoSwap"
+
+[[outputs]]
+id = "brkPSX8ssyKUFPTXaaHRD"
+uri = "file://screenshots/variant-vintage.jpg"
+type = "image"
+title = "Vintage LingoSwap"
+
+[[outputs]]
+id = "i4HQ8qevEaa6dZWfZuXul"
+uri = "file://screenshots/variant-retro.jpg"
+type = "image"
+title = "Retro LingoSwap"
+
+[[outputs]]
+id = "1YqDkCXhrGmslE9KxLtr3"
+uri = "file://screenshots/variant-organic.jpg"
+type = "image"
+title = "Organic LingoSwap"
+
+[[outputs]]
+id = "DQ2k1m9ARmyBz5adfmGzY"
+uri = "file://screenshots/variant-brutalist.jpg"
+type = "image"
+title = "Brutalist LingoSwap"
