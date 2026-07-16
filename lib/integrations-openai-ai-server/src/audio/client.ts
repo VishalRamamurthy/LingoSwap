@@ -216,36 +216,85 @@ export async function textToSpeechStream(
   })();
 }
 
-/** Speech-to-Text using whisper-1. */
-export async function speechToText(
-  audioBuffer: Buffer,
-  format: "wav" | "mp3" | "webm" = "wav"
-): Promise<string> {
-  const file = await toFile(audioBuffer, `audio.${format}`);
-  const response = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-  });
-  return response.text;
+const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2";
+
+function assemblyAIKey(): string {
+  const key = process.env.ASSEMBLYAI_API_KEY;
+  if (!key) {
+    throw new Error(
+      "Speech-to-text isn't set up: ASSEMBLYAI_API_KEY secret is missing.",
+    );
+  }
+  return key;
 }
 
-/** Streaming Speech-to-Text. */
+/**
+ * Speech-to-Text using AssemblyAI.
+ * Uploads the audio buffer, submits a transcription job, and polls until done.
+ */
+export async function speechToText(
+  audioBuffer: Buffer,
+  // format param kept for API compatibility; AssemblyAI auto-detects
+  _format: "wav" | "mp3" | "webm" = "wav",
+): Promise<string> {
+  const key = assemblyAIKey();
+  const headers = { authorization: key };
+
+  // Step 1: Upload audio
+  const uploadRes = await fetch(`${ASSEMBLYAI_BASE}/upload`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/octet-stream" },
+    body: audioBuffer,
+  });
+  if (!uploadRes.ok) {
+    throw new Error(`AssemblyAI upload failed: ${uploadRes.status}`);
+  }
+  const { upload_url } = (await uploadRes.json()) as { upload_url: string };
+
+  // Step 2: Submit transcription job
+  const transcriptRes = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ audio_url: upload_url, language_detection: true }),
+  });
+  if (!transcriptRes.ok) {
+    throw new Error(`AssemblyAI transcription submit failed: ${transcriptRes.status}`);
+  }
+  const { id } = (await transcriptRes.json()) as { id: string };
+
+  // Step 3: Poll until completed or error
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const pollRes = await fetch(`${ASSEMBLYAI_BASE}/transcript/${id}`, {
+      headers,
+    });
+    if (!pollRes.ok) {
+      throw new Error(`AssemblyAI poll failed: ${pollRes.status}`);
+    }
+    const data = (await pollRes.json()) as {
+      status: string;
+      text?: string;
+      error?: string;
+    };
+    if (data.status === "completed") {
+      return data.text ?? "";
+    }
+    if (data.status === "error") {
+      throw new Error(`AssemblyAI transcription error: ${data.error}`);
+    }
+  }
+  throw new Error("AssemblyAI transcription timed out after 60 seconds");
+}
+
+/**
+ * Streaming Speech-to-Text — falls back to batch for AssemblyAI.
+ */
 export async function speechToTextStream(
   audioBuffer: Buffer,
-  format: "wav" | "mp3" | "webm" = "wav"
+  format: "wav" | "mp3" | "webm" = "wav",
 ): Promise<AsyncIterable<string>> {
-  const file = await toFile(audioBuffer, `audio.${format}`);
-  const stream = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-    stream: true,
-  });
-
+  const text = await speechToText(audioBuffer, format);
   return (async function* () {
-    for await (const event of stream) {
-      if (event.type === "transcript.text.delta") {
-        yield event.delta;
-      }
-    }
+    yield text;
   })();
 }
