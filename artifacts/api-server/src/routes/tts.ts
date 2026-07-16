@@ -4,8 +4,8 @@ import { Buffer } from "node:buffer";
 
 const router: IRouter = Router();
 
-// Default multilingual voice (ElevenLabs "Rachel") + multilingual model
-const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
+// Default multilingual voice (ElevenLabs "Brian") + multilingual model
+const DEFAULT_VOICE_ID = "nPczCjzI2devNBz1zQrb";
 const MODEL_ID = "eleven_multilingual_v2";
 
 router.post("/tts", async (req, res) => {
