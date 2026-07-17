@@ -1,8 +1,5 @@
 import { Router, type IRouter } from "express";
-import {
-  speechToText,
-  ensureCompatibleFormat,
-} from "@workspace/integrations-openai-ai-server/audio";
+import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
 import { TranscribeAudioBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
 
@@ -21,12 +18,12 @@ router.post("/transcribe", async (req, res) => {
   const { audioBase64 } = parsed.data;
 
   try {
+    // AssemblyAI accepts raw audio bytes directly — no format conversion needed.
     const rawBuffer = Buffer.from(audioBase64, "base64");
-    const { buffer: audioBuffer, format } = await ensureCompatibleFormat(rawBuffer);
 
     let transcription: string;
     try {
-      transcription = await speechToText(audioBuffer, format);
+      transcription = await speechToText(rawBuffer);
     } catch (err) {
       req.log.error({ err }, "Speech-to-text failed");
       res
