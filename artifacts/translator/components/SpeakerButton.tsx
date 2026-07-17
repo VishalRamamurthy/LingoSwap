@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { TouchableOpacity, ActivityIndicator, Alert, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { Audio } from "expo-av";
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import type { AudioPlayer } from "expo-audio";
 import { Paths, File as FSFile } from "expo-file-system";
 import { useTextToSpeech } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
@@ -15,20 +16,19 @@ interface SpeakerButtonProps {
 export default function SpeakerButton({ text, language, size = 18 }: SpeakerButtonProps) {
   const colors = useColors();
   const ttsMutation = useTextToSpeech();
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     return () => {
-      soundRef.current?.unloadAsync().catch(() => {});
+      playerRef.current?.remove();
     };
   }, []);
 
-  const stop = async () => {
-    if (soundRef.current) {
-      await soundRef.current.stopAsync().catch(() => {});
-      await soundRef.current.unloadAsync().catch(() => {});
-      soundRef.current = null;
+  const stop = () => {
+    if (playerRef.current) {
+      playerRef.current.remove();
+      playerRef.current = null;
     }
     setIsPlaying(false);
   };
@@ -56,7 +56,6 @@ export default function SpeakerButton({ text, language, size = 18 }: SpeakerButt
             if (Platform.OS === "web") {
               uri = `data:${data.mimeType};base64,${data.audioBase64}`;
             } else {
-              // expo-file-system v19+ uses File/Paths API
               const file = new FSFile(Paths.cache, `tts-${Date.now()}.mp3`);
               const bytes = Uint8Array.from(atob(data.audioBase64), (c) =>
                 c.charCodeAt(0)
@@ -64,23 +63,21 @@ export default function SpeakerButton({ text, language, size = 18 }: SpeakerButt
               await file.write(bytes);
               uri = file.uri;
             }
-            await Audio.setAudioModeAsync({
-              allowsRecordingIOS: false,
-              playsInSilentModeIOS: true,
+            await setAudioModeAsync({
+              allowsRecording: false,
+              playsInSilentMode: true,
             });
-            const { sound } = await Audio.Sound.createAsync(
-              { uri },
-              { shouldPlay: true }
-            );
-            soundRef.current = sound;
+            const player = createAudioPlayer({ uri });
+            playerRef.current = player;
             setIsPlaying(true);
-            sound.setOnPlaybackStatusUpdate((status) => {
-              if (status.isLoaded && status.didJustFinish) {
+            player.addListener("playbackStatusUpdate", (status) => {
+              if (status.didJustFinish) {
                 setIsPlaying(false);
-                sound.unloadAsync().catch(() => {});
-                soundRef.current = null;
+                player.remove();
+                if (playerRef.current === player) playerRef.current = null;
               }
             });
+            player.play();
           } catch {
             setIsPlaying(false);
             showError("Could not play the audio on this device.");
