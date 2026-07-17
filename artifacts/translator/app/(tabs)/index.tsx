@@ -17,12 +17,7 @@ import { Feather } from "@expo/vector-icons";
 import { useHistory } from "@/contexts/HistoryContext";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import {
-  useAudioRecorder,
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-} from "expo-audio";
+import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system";
 import * as Location from "expo-location";
 import { LANGUAGES } from "@/constants/languages";
@@ -57,7 +52,7 @@ export default function TranslateScreen() {
   const [copied, setCopied] = useState(false);
   const [isSourceSelectorOpen, setIsSourceSelectorOpen] = useState(false);
   const [isTargetSelectorOpen, setIsTargetSelectorOpen] = useState(false);
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   // Correlates each translation request so a stale response can never
   // overwrite the result/history of a newer one.
   const translationRequestIdRef = useRef(0);
@@ -224,16 +219,19 @@ export default function TranslateScreen() {
 
   const startRecording = async () => {
     try {
-      const { granted } = await requestRecordingPermissionsAsync();
+      const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
       });
-      await recorder.record();
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      recordingRef.current = recording;
       setRecordingState("recording");
       clearResult();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -243,14 +241,15 @@ export default function TranslateScreen() {
   };
 
   const stopRecording = async () => {
-    if (!recorder.isRecording) return;
+    if (!recordingRef.current) return;
     setRecordingState("processing");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      await recorder.stop();
-      await setAudioModeAsync({ allowsRecording: false });
-      const uri = recorder.uri;
+      await recordingRef.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
 
       if (!uri) throw new Error("No recording URI");
 
@@ -282,6 +281,7 @@ export default function TranslateScreen() {
       );
     } catch {
       setRecordingState("idle");
+      recordingRef.current = null;
     }
   };
 

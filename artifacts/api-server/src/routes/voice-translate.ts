@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { elevenLabsSpeechToText } from "../lib/elevenlabs-stt";
+import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
 import { VoiceTranslateBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
 import {
@@ -30,7 +30,7 @@ router.post("/voice-translate", async (req, res) => {
     // Step 1: Transcribe the audio with AssemblyAI (auto-detects format)
     let transcription: string;
     try {
-      transcription = await elevenLabsSpeechToText(rawBuffer);
+      transcription = await speechToText(rawBuffer);
     } catch (err) {
       req.log.error({ err }, "Speech-to-text failed");
       res.status(502).json({ message: "Could not transcribe audio. Please try again." });
