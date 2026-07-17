@@ -1,3 +1,4 @@
 - [api-zod barrel conflict](api-zod-barrel.md) — orval regenerates index.ts in split mode; naming schemas uniquely vs operationId avoids duplicate export errors.
 - [expo-av audio recording](expo-audio-recording.md) — expo-av works in Expo Go for recording; use expo-file-system to read URI as base64 for server upload.
 - [ElevenLabs and DeepL setup](elevenlabs-deepl-setup.md) — free-tier voice IDs for ElevenLabs, DeepL key format/URL, and secret names.
+- [Expo Replit preview SQLite sync error](expo-replit-preview-sqlite.md) — SDK 54 dev-mode web preview fails in Replit iframe; use `--no-dev` for preview or Expo Go QR for full dev features.
