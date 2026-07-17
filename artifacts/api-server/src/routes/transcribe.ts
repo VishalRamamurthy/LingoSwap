@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
+import { elevenLabsSpeechToText } from "../lib/elevenlabs-stt";
 import { TranscribeAudioBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
 
@@ -23,7 +23,7 @@ router.post("/transcribe", async (req, res) => {
 
     let transcription: string;
     try {
-      transcription = await speechToText(rawBuffer);
+      transcription = await elevenLabsSpeechToText(rawBuffer);
     } catch (err) {
       req.log.error({ err }, "Speech-to-text failed");
       res
