@@ -14,7 +14,10 @@
       "backgroundColor": "#05051a"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "LingoSwap needs microphone access to transcribe your speech for translation."
+      }
     },
     "android": {},
     "web": {
