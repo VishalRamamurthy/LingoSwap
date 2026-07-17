@@ -58,6 +58,20 @@ export const VoiceTranslateResponse = zod.object({
 
 
 /**
+ * Transcribes recorded speech to text without translating it
+ * @summary Transcribe audio to text
+ */
+export const TranscribeAudioBody = zod.object({
+  "audioBase64": zod.string().describe('Base64-encoded audio recording'),
+  "mimeType": zod.string().describe('MIME type of the audio (e.g. \"audio\/m4a\", \"audio\/mp4\")')
+})
+
+export const TranscribeAudioResponse = zod.object({
+  "transcription": zod.string().describe('The transcribed text from the audio')
+})
+
+
+/**
  * Generates spoken audio for the given text using ElevenLabs and returns it as base64
  * @summary Convert text to speech
  */

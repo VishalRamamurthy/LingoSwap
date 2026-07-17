@@ -5,7 +5,14 @@
 
 const LANGUAGE_CODES: Record<string, string> = {
   arabic: "AR",
+  bengali: "BN",
   bulgarian: "BG",
+  croatian: "HR",
+  hebrew: "HE",
+  hindi: "HI",
+  serbian: "SR",
+  thai: "TH",
+  vietnamese: "VI",
   chinese: "ZH",
   czech: "CS",
   danish: "DA",
@@ -96,6 +103,12 @@ export async function translateWithDeepL(
     throw new TranslationApiError(`Unsupported target language: ${targetLanguage}`, 400);
   }
   const sourceCode = sourceLanguage ? languageNameToCode(sourceLanguage) : undefined;
+  if (sourceLanguage && !sourceCode) {
+    throw new TranslationApiError(
+      `Unsupported source language: ${sourceLanguage}`,
+      400,
+    );
+  }
 
   const body: Record<string, unknown> = {
     text: [text],

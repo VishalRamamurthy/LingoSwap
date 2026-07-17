@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { useTranslateText, useVoiceTranslate } from "@workspace/api-client-react";
+import { useTranslateText, useTranscribeAudio } from "@workspace/api-client-react";
 import { Feather } from "@expo/vector-icons";
 import { useHistory } from "@/contexts/HistoryContext";
 import * as Clipboard from "expo-clipboard";
@@ -53,6 +53,9 @@ export default function TranslateScreen() {
   const [isSourceSelectorOpen, setIsSourceSelectorOpen] = useState(false);
   const [isTargetSelectorOpen, setIsTargetSelectorOpen] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
+  // Correlates each translation request so a stale response can never
+  // overwrite the result/history of a newer one.
+  const translationRequestIdRef = useRef(0);
   const userChangedTargetRef = useRef(false);
   const { addEntry } = useHistory();
 
@@ -87,7 +90,7 @@ export default function TranslateScreen() {
   }, []);
 
   const translateMutation = useTranslateText();
-  const voiceTranslateMutation = useVoiceTranslate();
+  const transcribeMutation = useTranscribeAudio();
 
   const params = useLocalSearchParams<{
     restoreText?: string;
@@ -172,33 +175,32 @@ export default function TranslateScreen() {
     setTranslatedText("");
     setDetectedLang("");
     translateMutation.reset();
-    voiceTranslateMutation.reset();
+    transcribeMutation.reset();
   };
 
-  const handleTranslate = () => {
-    if (!sourceText.trim()) return;
-    Keyboard.dismiss();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const runTranslation = (text: string, isVoice: boolean) => {
+    const requestId = ++translationRequestIdRef.current;
     translateMutation.mutate(
       {
         data: {
-          text: sourceText,
+          text,
           sourceLanguage: sourceLanguage === "auto" ? undefined : sourceLanguage,
           targetLanguage,
         },
       },
       {
         onSuccess: (data) => {
+          if (requestId !== translationRequestIdRef.current) return;
           setTranslatedText(data.translatedText);
           setDetectedLang(data.detectedLanguage);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           addEntry({
-            sourceText,
+            sourceText: text,
             translatedText: data.translatedText,
             sourceLanguage:
               sourceLanguage === "auto" ? data.detectedLanguage : sourceLanguage,
             targetLanguage,
-            isVoice: false,
+            isVoice,
           });
         },
         onError: () => {
@@ -206,6 +208,13 @@ export default function TranslateScreen() {
         },
       }
     );
+  };
+
+  const handleTranslate = () => {
+    if (!sourceText.trim()) return;
+    Keyboard.dismiss();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    runTranslation(sourceText, false);
   };
 
   const startRecording = async () => {
@@ -248,28 +257,21 @@ export default function TranslateScreen() {
         encoding: "base64",
       });
 
-      voiceTranslateMutation.mutate(
+      // Phase 1: transcribe — show the spoken words as soon as they're ready,
+      // then Phase 2: translate (the result card shows "..." while pending).
+      transcribeMutation.mutate(
         {
           data: {
             audioBase64: base64,
             mimeType: "audio/m4a",
-            targetLanguage,
           },
         },
         {
           onSuccess: (data) => {
             setSourceText(data.transcription);
-            setTranslatedText(data.translatedText);
-            setDetectedLang(data.detectedLanguage);
             setRecordingState("idle");
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            addEntry({
-              sourceText: data.transcription,
-              translatedText: data.translatedText,
-              sourceLanguage: data.detectedLanguage,
-              targetLanguage: data.targetLanguage,
-              isVoice: true,
-            });
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            runTranslation(data.transcription, true);
           },
           onError: () => {
             setRecordingState("idle");
@@ -284,7 +286,9 @@ export default function TranslateScreen() {
   };
 
   const handleMicPress = () => {
-    if (recordingState === "processing") return;
+    // Block new recordings until the full transcribe + translate cycle ends,
+    // so an older in-flight request can't race a newer one.
+    if (recordingState === "processing" || translateMutation.isPending) return;
     if (recordingState === "recording") {
       stopRecording();
     } else {
@@ -312,11 +316,11 @@ export default function TranslateScreen() {
 
   const isLoading =
     translateMutation.isPending ||
-    voiceTranslateMutation.isPending ||
+    transcribeMutation.isPending ||
     recordingState === "processing";
-  const hasError = translateMutation.isError || voiceTranslateMutation.isError;
+  const hasError = translateMutation.isError || transcribeMutation.isError;
   const errorMessage =
-    (voiceTranslateMutation.error as Error | undefined)?.message ||
+    (transcribeMutation.error as Error | undefined)?.message ||
     (translateMutation.error as Error | undefined)?.message ||
     "Translation failed. Please try again.";
 
@@ -467,7 +471,7 @@ export default function TranslateScreen() {
           <View style={styles.voiceArea}>
             <TouchableOpacity
               onPress={handleMicPress}
-              disabled={recordingState === "processing"}
+              disabled={recordingState === "processing" || translateMutation.isPending}
               activeOpacity={0.85}
             >
               <View style={styles.micContainer}>
@@ -516,6 +520,8 @@ export default function TranslateScreen() {
               {recordingState === "recording"
                 ? "Listening... tap to stop"
                 : recordingState === "processing"
+                ? "Transcribing..."
+                : translateMutation.isPending
                 ? "Translating..."
                 : "Tap to speak"}
             </Text>
@@ -595,8 +601,9 @@ export default function TranslateScreen() {
           </View>
         )}
 
-        {/* Result card */}
-        {translatedText ? (
+        {/* Result card — also shown while the translation is pending so the
+            transcription appears first, with a "..." translating indicator */}
+        {translatedText || (sourceText && translateMutation.isPending) ? (
           <View
             style={[
               styles.resultCard,
@@ -662,17 +669,28 @@ export default function TranslateScreen() {
             <View style={[styles.resultDivider, { backgroundColor: colors.border }]} />
 
             {/* Translation */}
-            <View style={styles.resultTextRow}>
-              <Text
-                style={[
-                  styles.resultTranslation,
-                  { color: colors.foreground, flex: 1 },
-                ]}
-              >
-                {translatedText}
-              </Text>
-              <SpeakerButton text={translatedText} language={targetLanguage} size={20} />
-            </View>
+            {translatedText ? (
+              <View style={styles.resultTextRow}>
+                <Text
+                  style={[
+                    styles.resultTranslation,
+                    { color: colors.foreground, flex: 1 },
+                  ]}
+                >
+                  {translatedText}
+                </Text>
+                <SpeakerButton text={translatedText} language={targetLanguage} size={20} />
+              </View>
+            ) : (
+              <View style={styles.resultTextRow}>
+                <Text
+                  style={[styles.resultTranslation, { color: colors.mutedForeground }]}
+                >
+                  ...
+                </Text>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
+            )}
           </View>
         ) : null}
       </ScrollView>
@@ -708,7 +726,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
-    alignItems: "flex-start",
+    alignItems: "center",
     borderBottomWidth: 3,
   },
   wordmark: {

@@ -42,6 +42,18 @@ export interface VoiceTranslateRequest {
   sourceLanguage?: string;
 }
 
+export interface TranscribeRequest {
+  /** Base64-encoded audio recording */
+  audioBase64: string;
+  /** MIME type of the audio (e.g. "audio/m4a", "audio/mp4") */
+  mimeType: string;
+}
+
+export interface TranscribeOutput {
+  /** The transcribed text from the audio */
+  transcription: string;
+}
+
 export interface VoiceTranslateOutput {
   /** The transcribed text from the audio */
   transcription: string;

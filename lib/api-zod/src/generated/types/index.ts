@@ -8,6 +8,8 @@
 
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './transcribeOutput';
+export * from './transcribeRequest';
 export * from './translateRequest';
 export * from './translateResponse';
 export * from './ttsOutput';

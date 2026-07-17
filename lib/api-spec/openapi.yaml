@@ -76,6 +76,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /transcribe:
+    post:
+      operationId: transcribeAudio
+      tags: [translation]
+      summary: Transcribe audio to text
+      description: Transcribes recorded speech to text without translating it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscribeRequest"
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscribeOutput"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /tts:
     post:
       operationId: textToSpeech
@@ -162,6 +187,26 @@ components:
         - audioBase64
         - mimeType
         - targetLanguage
+    TranscribeRequest:
+      type: object
+      properties:
+        audioBase64:
+          type: string
+          description: Base64-encoded audio recording
+        mimeType:
+          type: string
+          description: MIME type of the audio (e.g. "audio/m4a", "audio/mp4")
+      required:
+        - audioBase64
+        - mimeType
+    TranscribeOutput:
+      type: object
+      properties:
+        transcription:
+          type: string
+          description: The transcribed text from the audio
+      required:
+        - transcription
     VoiceTranslateOutput:
       type: object
       properties:

@@ -27,7 +27,8 @@ router.post("/tts", async (req, res) => {
     return;
   }
 
-  const { text } = parsed.data;
+  // Normalize: collapse whitespace so the voice reads exactly the visible words.
+  const text = parsed.data.text.trim().replace(/\s+/g, " ");
 
   try {
     const response = await fetch(
@@ -41,6 +42,14 @@ router.post("/tts", async (req, res) => {
         body: JSON.stringify({
           text,
           model_id: MODEL_ID,
+          // Conservative settings so the voice reads the text verbatim —
+          // high stability and zero style prevent improvised fillers/coughs.
+          voice_settings: {
+            stability: 0.9,
+            similarity_boost: 0.75,
+            style: 0,
+            use_speaker_boost: false,
+          },
         }),
       },
     );
