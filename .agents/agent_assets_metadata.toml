@@ -41,3 +41,9 @@ id = "_MzjC2jmkXjlAVzm1SWbA"
 uri = "file://screenshots/variant-brutalist-v2.jpg"
 type = "image"
 title = "Brutalist v2 — Rounded, Same Font, Original Vibe"
+
+[[outputs]]
+id = "eBQLQOi5YufkVIOXYBGTu"
+uri = "file://attached_assets/expo-go-qr.png"
+type = "image"
+title = "Expo Go QR code for LingoSwap"
