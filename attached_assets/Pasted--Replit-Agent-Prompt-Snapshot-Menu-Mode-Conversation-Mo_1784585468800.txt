@@ -1,0 +1,306 @@
+# Replit Agent Prompt — Snapshot Menu Mode + Conversation Mode
+
+> Paste everything below the line into Replit Agent.
+
+---
+
+## Overview
+
+Two features for LingoSwap, plus a **mandatory testing protocol** at the end that is part of the deliverable, not optional cleanup.
+
+- **Feature A — Snapshot modes.** Snapshot gets two capture modes: **Text** (current behavior, one text blob) and **Menu** (itemized line-by-line results with prices preserved).
+- **Feature B — Conversation mode.** Two-way spoken translation: I speak, it translates and speaks back in their language; they speak, it translates and speaks back in mine.
+
+**Absolute constraint: no new third-party APIs and no new API keys.** Everything here reuses services the app already has — OCR.space for OCR, the existing translation service, the existing speech-to-text pipeline. If you believe a feature requires a new external service, **stop and tell me instead of adding it.**
+
+---
+
+## 0. Discovery — do this FIRST, before writing code
+
+Read and report back:
+
+1. The Snapshot implementation you built: the screen, the hook, the `/api/snapshot/translate` route, and the OCR service module.
+2. The existing **translation service** — its function signature. Specifically: **does it accept an array/batch of strings, or only one string at a time?** This determines the menu-mode design, so answer it precisely with the file path and signature.
+3. The existing **speech-to-text pipeline** end to end: how audio is recorded (`expo-av` config, file format, sample rate), how it's uploaded, which backend route transcribes it, and what it returns.
+4. The current **tab bar** — list every tab in order and the total count.
+5. The **history store** — entry shape, existing `type` discriminator values, and how the list renders different types.
+6. Whether any **test runner or test files** already exist anywhere in the monorepo (check root, `artifacts/*`, `lib/*`, and the `scripts` package). Report exactly what you find.
+
+State your implementation plan before changing anything. Do not invent parallel implementations of things that already exist.
+
+---
+
+## 1. Hard constraints
+
+Carried over from the Snapshot work — all still apply:
+
+- **Must run in Expo Go on a physical iPhone (Expo SDK 54).** No native modules outside the official Expo SDK. No `react-native-vision-camera`, no ML Kit, no anything requiring a custom dev build.
+- **pnpm only.** `pnpm exec expo install <pkg>` from `artifacts/translator`. npm and yarn are blocked by a preinstall guard.
+- **Do not edit `pnpm-workspace.yaml`** — not the `overrides`, not the `catalog`, not `minimumReleaseAge`.
+- **Do not run `expo prebuild`** or modify `artifacts/translator/ios/`.
+- **Do not touch** the `dev` script or any `EXPO_*` / `REPLIT_*` env plumbing.
+- API keys stay server-side. Never in the client, never in `EXPO_PUBLIC_*`.
+- TypeScript strict. `pnpm run typecheck` must pass.
+
+New for this task:
+
+- **No new external APIs or keys.** Zero.
+- **Do not migrate audio libraries.** The app uses `expo-av`. It is deprecated in favor of `expo-audio`, and I know that. Migrating is out of scope and would risk the working STT feature. Keep using `expo-av`.
+- **One permitted new package: `expo-speech`.** Install with `pnpm exec expo install expo-speech`. This is an official Expo SDK module that drives the **device's built-in iOS speech synthesizer** — no network call, no API key, no cost, no quota, and it works in Expo Go. It is not a third-party API. If installation fails for any reason, conversation mode must **degrade gracefully to text-only** rather than break.
+
+---
+
+## 2. Feature A — Snapshot: Text mode vs Menu mode
+
+### 2a. Mode selector
+
+- Add a segmented control at the top of the Snapshot screen: **Text | Menu**, defaulting to Text.
+- Selecting the mode **before** capture is the primary flow, because the mode changes the OCR request parameters.
+- After a result is shown, the user can switch modes to re-analyze **the same photo** without re-shooting it. This costs one additional OCR call — show a brief inline note ("Re-reading as a menu…") so it isn't silent.
+- Persist the last-used mode with AsyncStorage so it survives app restarts.
+
+### 2b. What changes in the OCR call
+
+Menu mode uses the **same OCR.space endpoint and the same key** — only the parameters change:
+
+| Parameter | Text mode | Menu mode | Why |
+|---|---|---|---|
+| `isTable` | `false` | **`true`** | OCR.space explicitly recommends this for menus, receipts, and table-like layouts; it forces line-by-line output instead of a reflowed blob |
+| `isOverlayRequired` | `false` | **`true`** | returns per-word `Left`/`Top`/`Width`/`Height` boxes, which we use for line grouping and price-column detection |
+| `OCREngine` | 2 (fallback 3) | 2 (fallback 3) | unchanged |
+| `scale` / `detectOrientation` | `true` | `true` | unchanged |
+
+Note: overlay data adds negligible cost on Engine 2, but makes Engine 3 calls 2–3× slower. If you fall back to Engine 3 in menu mode, that's acceptable, but log the slower path.
+
+### 2c. Server-side menu segmentation
+
+Write a **pure, exported, testable function** — no network calls inside it — that turns an OCR response into structured items:
+
+```ts
+type MenuItem = {
+  id: string;
+  originalText: string;      // the dish name / description, price stripped
+  price: string | null;      // verbatim, e.g. "12,50 €" — NEVER translated or reformatted
+  translatedText: string;    // filled in later
+  isSectionHeader: boolean;  // "Antipasti", "Desserts"
+};
+```
+
+Segmentation rules:
+
+1. **Group words into lines** using the overlay's `Top` and `MaxHeight` values (words within roughly one line-height of each other belong to the same line). Fall back to splitting `ParsedText` on newlines if overlay data is missing.
+2. **Detect and strip prices** with a regex covering: leading or trailing currency symbols (`$ € £ ¥ ₩ ₹ ฿ zł kr`), 3-letter codes (`USD`, `EUR`), both decimal separators (`12.50` and `12,50`), and thousands separators. Store the price string **exactly as it appeared**. Prices are passed through verbatim — never sent to translation, never reformatted, never currency-converted.
+3. **Detect section headers**: short lines, no price, often ALL CAPS or visually larger (compare `MaxHeight` against the median line height from the overlay).
+4. **Merge continuation lines**: a line with no price that sits directly under a priced line and starts lowercase is usually a description — merge it into the previous item rather than creating a new one.
+5. **Drop noise**: lines that are only punctuation, dot leaders (`. . . . .`), or fewer than 2 characters.
+
+### 2d. Batch translation — this is the efficiency requirement
+
+**Translating N menu items must cost exactly ONE translation request, not N.**
+
+- If the existing translation service accepts an array, use it directly.
+- If it only accepts a single string, join the items into one numbered payload:
+  ```
+  1. Spaghetti alla Carbonara
+  2. Insalata Mista
+  3. Tiramisù
+  ```
+  and instruct the model to return the same numbering with one translation per line and nothing else.
+- **Validate the response**: the returned line count must equal the sent count and the numbering must be intact. On mismatch, retry once; if it still mismatches, fall back to per-item translation and log a warning. Never silently misalign a translation with the wrong dish — that's the worst possible failure for this feature.
+- Section headers get translated too, in the same batch.
+- Cap at 60 items per request; chunk beyond that and reassemble in order.
+
+### 2e. Menu mode UI
+
+- Photo at the top, as in Text mode.
+- Below it, a **list** — not a blob. Each row: translated name as the primary line, original name smaller and dimmer beneath it, price right-aligned and visually distinct.
+- Section headers render as list section headings.
+- Tapping a row expands it: full original, full translation, copy button, and a speak button (see Feature B's TTS helper — reuse it, don't write a second one).
+- Changing the target language re-translates from the **cached original items** — it must not re-run OCR.
+- Empty state: if segmentation yields fewer than 2 items, show "This doesn't look like a menu" and offer a one-tap switch to Text mode using the same photo.
+
+---
+
+## 3. Feature B — Conversation mode
+
+### 3a. Where it lives
+
+Put it **inside the existing Translate tab** as a mode toggle (e.g. a segmented control: **Text | Voice | Conversation**), not as a new tab. Reason: iOS collapses a tab bar into "More" past 5 items, and conversation mode is a *way of translating* rather than a separate destination. Report the current tab count in discovery; if you disagree after seeing the code, say so before building.
+
+### 3b. Layout
+
+A split screen with two halves facing opposite directions:
+
+- **Top half rotated 180°** for the person across from you, showing their language.
+- **Bottom half** upright, showing your language.
+- Each half has one large tap-to-talk button and a transcript area.
+- Language selectors: yours and theirs, each reusing the existing picker component.
+- The active half is visually emphasized; the inactive half dims.
+- A shared, scrollable transcript of the exchange sits between them, newest at the bottom, each entry showing both the original and the translation.
+
+### 3c. Turn flow
+
+Implement as an explicit state machine — no ad-hoc booleans:
+
+```
+idle → recording(side) → transcribing → translating → speaking → idle
+```
+
+Each turn:
+1. User taps their side's button → record with `expo-av`, using the **exact same recording configuration the existing STT feature uses**. Do not invent new audio settings.
+2. Tap again (or auto-stop on silence, if you implement it) → stop recording.
+3. Upload to the **existing transcription route**. Do not create a new one.
+4. Translate the transcript into the other side's language via the **existing translation service**.
+5. Speak the translation with `expo-speech`, using the target language code so iOS picks the right voice.
+6. Append both texts to the transcript and return to idle.
+
+### 3d. The audio-session gotcha — do not skip this
+
+On iOS, `expo-av` recording and audio playback need different audio modes. **If you leave `allowsRecordingIOS: true` set while trying to play speech, playback is silent or routes to the earpiece instead of the speaker.** This is the single most common way this feature ships broken.
+
+Set the mode explicitly at each transition:
+
+- Before recording: `allowsRecordingIOS: true`
+- Before speaking: `allowsRecordingIOS: false`, `playsInSilentModeIOS: true`
+- Verify audio comes out of the **speaker** at a normal volume, not the earpiece.
+
+Test this on the device with the ringer switch **off/silent** — that's exactly the condition `playsInSilentModeIOS` exists to handle, and it's how most people carry their phone.
+
+### 3e. Required cleanup and safety
+
+- Stop and unload any active recording when the screen loses focus, the app backgrounds, or the component unmounts. A mic left hot is a real bug, not a nitpick.
+- Delete temporary audio files after successful upload (`expo-file-system`). Without this you leak files onto the user's device on every single turn.
+- Stop any in-flight speech before starting a new recording, so the app never listens to itself.
+- Guard against double-taps and against tapping the other side's button mid-turn.
+- Handle: mic permission denied, no speech detected, network failure mid-turn (keep the transcript, show a retry on that entry only), and very long recordings (cap at ~60s with a visible timer).
+
+### 3f. Efficiency requirements
+
+- Identical `(text, sourceLang, targetLang)` must not be re-translated — memoize within the session.
+- Swapping the two languages must reuse existing transcript data rather than re-translating everything.
+- No polling, no timers left running, no re-render of the whole transcript on each keystroke or state tick.
+
+---
+
+## 4. History integration
+
+- Menu results: `type: 'menu'`, storing the item array, both languages, timestamp, and image URI.
+- Conversations: `type: 'conversation'`, storing the full turn list, both languages, and timestamp.
+- Widen the existing history entry types **properly** — discriminated unions, no `any`, no casts.
+- Existing history entries must continue to render correctly. Verify this explicitly; a migration that breaks old entries is a failure.
+
+---
+
+## 5. TESTING — this is a required deliverable
+
+Do not report this task as finished until every item below is done and you have **pasted the real terminal output**. Do not claim a test passes without showing its output.
+
+### 5a. Test runner
+
+Use whatever test setup already exists (report it in discovery). **If nothing exists, use Node's built-in test runner (`node:test` with `node --test`)** — it needs no new dependency, which keeps us inside the no-new-packages constraint. Do not install vitest or jest without asking me first.
+
+### 5b. Unit tests — pure functions, no network
+
+Write real tests, with real assertions, for:
+
+| Function | Cases that must be covered |
+|---|---|
+| Menu segmentation | normal menu; menu with section headers; item with a two-line description; prices in `$12.99`, `12,50 €`, `€12.50`, `1 200 ¥`; item with no price; dot-leader noise lines; empty OCR result; a non-menu photo (paragraph of prose) yielding <2 items |
+| Price detection | each currency format above; a line containing a year (`Est. 1948` is **not** a price); a line containing a table number; a price in the middle of text |
+| Batch payload builder | correct numbering; correct chunking at the 60-item cap; special characters and newlines inside item text don't corrupt the format |
+| Batch response parser | correct parse; **count mismatch is detected**; out-of-order numbering is detected; extra model commentary is stripped |
+| Language code mapping | app code → OCR.space 3-letter code; unmapped code falls back to `auto` |
+| Conversation state machine | every legal transition; illegal transitions rejected (e.g. starting a recording while speaking) |
+
+### 5c. Fixtures — capture once, then mock
+
+- Make **a handful** of real OCR.space calls by hand (a menu photo, a sign, a page of prose, an image with no text), save the raw JSON responses as fixtures under a `__fixtures__` folder, and **mock the OCR client in all tests thereafter**.
+- Tests must never hit the live OCR.space API. The free tier allows 500 requests/day and I want that budget spent on real testing, not CI. Tests must pass with no network connection.
+- Do the same for the translation service: one recorded response per test scenario, mocked thereafter.
+
+### 5d. Efficiency assertions — make "efficient" a test, not a claim
+
+These are the tests I care about most. Using mocked clients with call counters, assert:
+
+- [ ] A 30-item menu triggers **exactly 1** OCR call and **exactly 1** translation call.
+- [ ] A 150-item menu triggers 1 OCR call and exactly **3** translation calls (60-item chunking).
+- [ ] Changing the target language on an existing menu result triggers **0** OCR calls.
+- [ ] Re-translating identical text in a conversation session triggers **0** additional translation calls.
+- [ ] One conversation turn triggers exactly 1 transcription call and 1 translation call.
+- [ ] Switching Snapshot mode on an existing photo triggers exactly 1 OCR call, not 2.
+
+### 5e. Contract tests
+
+- Every API response validates against its zod schema.
+- Malformed OCR responses (missing `ParsedResults`, `OCRExitCode` of 3 or 4, `IsErroredOnProcessing: true`) produce structured errors, never an unhandled throw.
+- Oversized image payloads are rejected before the outbound request is made.
+
+### 5f. Static checks
+
+Run and paste the output of:
+```
+pnpm run typecheck
+```
+Zero errors. If a lint script exists, run that too.
+
+### 5g. Manual device QA script
+
+You can't hold my phone, so write me a checklist I can run in Expo Go. For each item give the exact steps and the expected result:
+
+**Menu mode**
+- [ ] Photograph a real restaurant menu → items appear as separate rows with prices intact and un-translated
+- [ ] Prices display exactly as printed (no currency conversion, no reformatting)
+- [ ] Section headers render as headings
+- [ ] Change target language → translations update, no new camera step, no perceptible OCR delay
+- [ ] Photograph a paragraph of prose in Menu mode → "doesn't look like a menu" + one-tap switch to Text mode
+- [ ] Switch a menu result to Text mode and back → both work off the same photo
+
+**Conversation mode**
+- [ ] Speak into side A → transcript, translation, and audible speech in side B's language
+- [ ] Speech plays through the **speaker** at normal volume — **with the phone's ringer switch set to silent**
+- [ ] Immediately speak into side B → correct reverse direction
+- [ ] Rotated top half is readable by someone sitting across the table
+- [ ] Navigate away mid-recording → recording stops, no mic indicator persists
+- [ ] Airplane mode mid-turn → clear error on that entry, transcript preserved, retry works
+- [ ] 10 turns in a row → no lag, no audio glitches, no memory growth
+- [ ] Deny mic permission → clear explanation and a working link to Settings
+
+**Regression — these must still work untouched**
+- [ ] Existing text translation
+- [ ] Existing voice (STT) translation
+- [ ] Snapshot in Text mode
+- [ ] History shows old entries correctly alongside new menu and conversation entries
+
+---
+
+## 6. Performance budgets
+
+- Menu with 30 items: results on screen within ~8s on a normal connection.
+- Conversation turn (tap stop → speech begins): under ~4s.
+- No frame drops scrolling a 50-item menu — use a virtualized list, not a `map` inside a `ScrollView`.
+- Temp audio files: zero left on disk after a completed turn. Verify and report how you verified.
+
+---
+
+## 7. Do NOT
+
+- Add any external API, service, or API key.
+- Install any package other than `expo-speech`, without asking first.
+- Migrate `expo-av` to `expo-audio`.
+- Create a second transcription route, translation path, or OCR client — reuse what exists.
+- Translate or reformat prices.
+- Make one translation call per menu item.
+- Add a fifth bottom tab without flagging it first.
+- Run `expo prebuild`, `npm install`, or edit `pnpm-workspace.yaml`.
+- Report tests as passing without pasting the actual output.
+
+---
+
+## 8. What to report when done
+
+1. Every file created or modified, one line of reasoning each.
+2. Answers to the discovery questions, especially the translation service's batch capability and what test infrastructure existed.
+3. **Full terminal output** of the test suite and of `pnpm run typecheck`.
+4. The efficiency assertion results from §5d, listed individually.
+5. The manual QA checklist, formatted so I can run it on my phone.
+6. Anything you had to assume, anything that didn't work, and anything you deliberately left out of scope. If something is half-finished, say so plainly — I would much rather know than discover it on a menu in a restaurant.
