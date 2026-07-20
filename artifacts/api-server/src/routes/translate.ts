@@ -5,6 +5,7 @@ import {
   TranslationConfigError,
   TranslationApiError,
 } from "../lib/deepl-translate";
+import { incrementTranslationCount } from "./auth-stats";
 
 const router: IRouter = Router();
 
@@ -28,6 +29,7 @@ router.post("/translate", async (req, res) => {
       autoDetect ? undefined : sourceLanguage,
     );
 
+    void incrementTranslationCount(req);
     res.json({
       translatedText: result.translatedText,
       detectedLanguage: result.detectedLanguage,

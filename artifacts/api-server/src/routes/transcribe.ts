@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
 import { TranscribeAudioBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
+import { incrementTranslationCount } from "./auth-stats";
 
 const router: IRouter = Router();
 
@@ -39,6 +40,7 @@ router.post("/transcribe", async (req, res) => {
       return;
     }
 
+    void incrementTranslationCount(req, { isVoice: true });
     res.json({ transcription: transcription.trim() });
   } catch (err) {
     req.log.error({ err }, "Transcription request failed");
