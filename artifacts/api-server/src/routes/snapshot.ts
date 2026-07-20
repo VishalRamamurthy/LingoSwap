@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
-import OpenAI from "openai";
 import {
   translateWithDeepL,
   TranslationConfigError,
@@ -23,53 +22,80 @@ const SnapshotTranslateBody = z.object({
 const MAX_BASE64_LEN = Math.ceil((8 * 1024 * 1024 * 4) / 3);
 
 // ---------------------------------------------------------------------------
-// OCR
+// OCR  (provider: ocr.space)
 // ---------------------------------------------------------------------------
 
-const OCR_PROVIDER = process.env.OCR_PROVIDER ?? "openai-vision";
-const OCR_MODEL = process.env.OCR_MODEL ?? "gpt-4o-mini";
+const OCR_ENGINE = process.env.OCR_ENGINE ?? "2"; // 2 = more accurate
 
-function getOcrClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "OPENAI_API_KEY secret is required for Snapshot OCR. " +
-        "Add it in the Replit Secrets panel.",
-    );
-  }
-  return new OpenAI({ apiKey });
+interface OcrSpaceResult {
+  ParsedResults?: { ParsedText?: string; ErrorMessage?: string; ErrorDetails?: string }[];
+  OCRExitCode?: number;
+  ErrorMessage?: string | string[];
+  IsErroredOnProcessing?: boolean;
 }
 
 async function extractText(imageBase64: string): Promise<string> {
-  if (OCR_PROVIDER !== "openai-vision") {
-    throw new Error(`Unknown OCR_PROVIDER: ${OCR_PROVIDER}`);
+  const apiKey = process.env.OCR_SPACE_API_KEY;
+  if (!apiKey) {
+    const err = new Error("OCR_SPACE_API_KEY secret is required for Snapshot OCR. Add it in the Replit Secrets panel.");
+    (err as Error & { code: string }).code = "ocr_not_configured";
+    throw err;
   }
 
-  const ocrClient = getOcrClient();
-  const completion = await ocrClient.chat.completions.create({
-    model: OCR_MODEL,
-    max_tokens: 2048,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:image/jpeg;base64,${imageBase64}`,
-              detail: "high",
-            },
-          },
-          {
-            type: "text",
-            text: "Transcribe every piece of visible text in this image verbatim. Preserve the original line breaks and reading order. Return only the raw text with no commentary, explanation, or markdown. If there is no legible text present, return an empty string and nothing else.",
-          },
-        ],
-      },
-    ],
+  const body = new URLSearchParams({
+    base64Image: `data:image/jpeg;base64,${imageBase64}`,
+    apikey: apiKey,
+    OCREngine: OCR_ENGINE,
+    detectOrientation: "true",
+    isTable: "false",
+    scale: "true",
   });
 
-  return completion.choices[0]?.message?.content?.trim() ?? "";
+  const res = await fetch("https://api.ocr.space/parse/image", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  if (res.status === 403) {
+    const err = new Error("Your OCR.space API key is invalid or unauthorised. Check the OCR_SPACE_API_KEY secret.");
+    (err as Error & { code: string }).code = "ocr_invalid_key";
+    throw err;
+  }
+
+  if (!res.ok) {
+    throw new Error(`OCR.space returned HTTP ${res.status}`);
+  }
+
+  const data = (await res.json()) as OcrSpaceResult;
+
+  if (data.IsErroredOnProcessing) {
+    const msg = Array.isArray(data.ErrorMessage)
+      ? data.ErrorMessage.join(" ")
+      : (data.ErrorMessage ?? "OCR.space processing error");
+
+    // Key-related errors
+    if (/unauthori[sz]ed|invalid.*key|api.*key/i.test(msg)) {
+      const err = new Error(`OCR.space API key error: ${msg}`);
+      (err as Error & { code: string }).code = "ocr_invalid_key";
+      throw err;
+    }
+
+    throw new Error(msg);
+  }
+
+  // OCRExitCode 1 = success, 2 = partially successful, others = failure
+  const exitCode = data.OCRExitCode ?? 0;
+  if (exitCode !== 1 && exitCode !== 2) {
+    throw new Error(`OCR.space exited with code ${exitCode}`);
+  }
+
+  const text = (data.ParsedResults ?? [])
+    .map((r) => r.ParsedText ?? "")
+    .join("\n")
+    .trim();
+
+  return text;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,19 +168,14 @@ router.post("/snapshot/translate", async (req, res) => {
     const errorMessage = (err as Error).message ?? String(err);
     req.log.error({ err: errorMessage }, "OCR failed");
 
-    if (errorMessage.includes("OPENAI_API_KEY secret is required")) {
-      res.status(503).json({
-        message: "Snapshot OCR is not configured. Add the OPENAI_API_KEY secret in your Replit settings.",
-        code: "ocr_not_configured",
-      });
+    const errWithCode = err as Error & { code?: string };
+    if (errWithCode.code === "ocr_not_configured") {
+      res.status(503).json({ message: errWithCode.message, code: "ocr_not_configured" });
       return;
     }
 
-    if (errorMessage.includes("401") || errorMessage.includes("Incorrect API key")) {
-      res.status(502).json({
-        message: "Your OpenAI API key is invalid. Check the OPENAI_API_KEY secret.",
-        code: "ocr_invalid_key",
-      });
+    if (errWithCode.code === "ocr_invalid_key") {
+      res.status(502).json({ message: errWithCode.message, code: "ocr_invalid_key" });
       return;
     }
 
