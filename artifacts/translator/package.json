@@ -59,6 +59,7 @@
   "dependencies": {
     "date-fns": "^3.6.0",
     "expo-av": "^16.0.8",
-    "expo-file-system": "^19.0.23"
+    "expo-file-system": "^19.0.23",
+    "expo-image-manipulator": "~14.0.8"
   }
 }

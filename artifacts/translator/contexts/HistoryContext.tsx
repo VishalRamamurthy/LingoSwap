@@ -1,13 +1,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type HistoryEntryType = 'text' | 'voice' | 'snapshot';
+
 export type HistoryEntry = {
   id: string;
-  sourceText: string;
+  /** Discriminator — defaults to 'text' for legacy entries that lack it. */
+  type?: HistoryEntryType;
+  sourceText: string;      // For snapshot: the OCR-detected text
   translatedText: string;
   sourceLanguage: string;
   targetLanguage: string;
   timestamp: number;
+  /** @deprecated Use `type === 'voice'` instead. Kept for backward compat. */
   isVoice?: boolean;
 };
 

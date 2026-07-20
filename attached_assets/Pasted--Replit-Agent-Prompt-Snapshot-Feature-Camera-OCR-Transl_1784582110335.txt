@@ -1,0 +1,245 @@
+# Replit Agent Prompt — "Snapshot" Feature (Camera → OCR → Translation)
+
+> Paste everything below the line into Replit Agent.
+
+---
+
+## Goal
+
+Add a new feature called **Snapshot** to the LingoSwap translator app: the user takes a photo of text (a sign, menu, page, label), the app detects the text in the image, translates it into a target language the user picks, and displays the translation directly underneath the photo. Snapshot gets its own tab in the bottom tab bar, alongside the existing Translate / History / Profile tabs.
+
+---
+
+## 0. Discovery step — do this FIRST, before writing any code
+
+Read the existing code and report back what you found. Do **not** invent new patterns where one already exists.
+
+Inspect and summarize:
+
+1. `artifacts/translator/app/` — the full expo-router structure, and specifically the tabs layout file (likely `app/(tabs)/_layout.tsx`). List the current tab screens in order, and how `tabBarIcon`, titles, and colors are configured.
+2. The existing **translate screen** — how it collects input, how it calls the backend, what hook/service wraps that call.
+3. The existing **language picker** — component name, path, and the shape of the language list/type (codes, labels, "auto detect" support).
+4. `artifacts/api-server` — route file organization, route naming conventions, request validation approach, error response shape, and how API keys / secrets are read from the environment.
+5. `lib/` and `lib/integrations/` — what's shared, especially `@workspace/api-client-react` and any shared zod schemas.
+6. How **translation history** is stored (AsyncStorage? backend? react-query cache?) and the shape of a history entry.
+7. How the existing **speech-to-text** feature works end to end (client capture → upload → backend → response), because Snapshot should mirror that architecture.
+
+Then state the exact file paths and symbol names you intend to reuse, and the exact new files you'll create. Wait for my confirmation before making changes if anything is ambiguous.
+
+---
+
+## 1. Hard constraints — read carefully, these are non-negotiable
+
+**Must run in Expo Go on a physical iPhone (Expo SDK 54).**
+I do not currently have a custom dev build, and Replit's preview canvas is broken, so Expo Go on device is my only testing path. Therefore:
+
+- **No new native modules outside the Expo SDK.** Explicitly forbidden: `react-native-vision-camera`, `@react-native-ml-kit/text-recognition`, `react-native-text-recognition`, `react-native-tesseract-ocr`, any package with an `ios/` or `android/` native folder that isn't an official `expo-*` SDK module. If you think one is required, stop and explain instead of installing it.
+- **On-device OCR is out of scope.** All OCR happens server-side (see Architecture below).
+
+**Package manager rules:**
+
+- pnpm only. A `preinstall` guard actively blocks npm and yarn — running `npm install` will fail the build.
+- Install packages with `pnpm exec expo install <package>` run from `artifacts/translator` so versions match SDK 54.
+- `pnpm-workspace.yaml` sets `minimumReleaseAge: 1440` (packages must be ≥24h old). **Do not edit, lower, or disable this setting**, and do not add anything to `minimumReleaseAgeExclude`. Do not touch the `overrides:` block or the `catalog:` block.
+
+**Do not break what already works:**
+
+- Do not modify the speech-to-text flow, the `dev` script in `artifacts/translator/package.json`, or any `EXPO_*` / `REPLIT_*` environment plumbing.
+- Do not run `expo prebuild`, and do not modify anything inside `artifacts/translator/ios/`.
+- Do not introduce a second translation code path — reuse the existing translation service.
+
+**Security:**
+
+- API keys live in Replit Secrets and are read **server-side only**. Never place a key in the client bundle, and never expose one through an `EXPO_PUBLIC_*` variable.
+- Do not log raw image bytes or base64 payloads.
+
+**Quality:**
+
+- TypeScript, strict. `pnpm run typecheck` must pass with zero errors when you're done.
+- Match the existing code style, folder conventions, and theming tokens.
+
+---
+
+## 2. Architecture — implement it this way
+
+```
+[Phone / Expo Go]                          [artifacts/api-server]
+ expo-image-picker  ──capture──►
+ expo-image-manipulator ──resize+compress──►
+        │
+        └── POST /api/snapshot/translate ──►  1. validate + size check
+                                              2. OCR provider → detected text
+                                              3. existing translation service
+                                              4. return JSON
+        ◄── { detectedText, sourceLanguage, translatedText, targetLanguage }
+```
+
+Rationale (so you don't "optimize" this away): this mirrors the app's existing audio → backend → transcript pattern, keeps all provider keys server-side, and requires zero native modules, which is what makes it work in Expo Go.
+
+---
+
+## 3. Dependencies
+
+| Package | Status | Use |
+|---|---|---|
+| `expo-image-picker` (17.0.9) | **already installed** | `launchCameraAsync` for the photo, `launchImageLibraryAsync` for "choose existing" |
+| `expo-image-manipulator` | install via `pnpm exec expo install expo-image-manipulator` | resize + compress before upload; it's an official Expo SDK module, so it's available in Expo Go |
+| `expo-image`, `expo-haptics`, `expo-clipboard`, `@tanstack/react-query`, `zod` | already installed | rendering, feedback, copy-to-clipboard, request state, response validation |
+
+Use `expo-image-picker` rather than `expo-camera` for capture: it needs no config plugin, no rebuild, and gives us photo-library import for free. If you believe an in-app viewfinder (live camera preview inside the screen) is genuinely required by the design, stop and ask me first — `expo-camera` is Expo Go compatible but adds a permissions/plugin step I want to decide on deliberately.
+
+---
+
+## 4. Backend work (`artifacts/api-server`)
+
+Create one new endpoint, following the existing route conventions you found in the discovery step:
+
+**`POST /api/snapshot/translate`**
+
+Request body (JSON):
+```ts
+{
+  image: string;            // base64, no data: prefix
+  mimeType: 'image/jpeg';
+  targetLanguage: string;   // reuse the app's existing language code type
+  sourceLanguage?: string;  // omit or 'auto' for detection
+}
+```
+
+Response (200):
+```ts
+{
+  detectedText: string;         // '' if nothing found
+  detectedLanguage?: string;    // best-effort
+  translatedText: string;       // '' if detectedText is ''
+  targetLanguage: string;
+  reason?: 'no_text_found' | 'low_confidence';
+}
+```
+
+Implementation requirements:
+
+1. **Validate with zod** (match the existing validation pattern). Reject payloads over ~8 MB with a clear 413.
+2. **OCR provider selection.** Check what vision-capable credentials already exist in Replit Secrets and prefer reusing the provider the app already pays for. Preference order:
+   - (a) The same LLM provider already used elsewhere in the app, via its vision model. Prompt it strictly: transcribe all visible text verbatim, preserve line breaks and reading order, return only the text with no commentary, and return an empty string if no legible text is present.
+   - (b) Google Cloud Vision `TEXT_DETECTION` if a key for it exists.
+   
+   Put the choice behind an `OCR_PROVIDER` env var with a sensible default so it can be swapped without a code change. Report which provider you selected and which secret name it expects — I'll add the key if it's missing.
+3. **Translate using the app's existing translation service/function.** Do not call a translation API directly from this new route if a service layer already exists.
+4. If OCR returns nothing, return **200** with `detectedText: ''` and `reason: 'no_text_found'` — not an error status. The client shows a friendly empty state.
+5. Set a request timeout around 30s, return the app's standard structured error shape on failure, and never leak provider error text containing keys.
+6. If text is very long, chunk it for translation and reassemble in order rather than truncating silently.
+
+---
+
+## 5. Frontend work (`artifacts/translator`)
+
+### 5a. The new tab
+
+- Create the route file (e.g. `app/(tabs)/snapshot.tsx` — match the actual folder structure you found).
+- Register it in the tabs layout with title **"Snapshot"**, placed **immediately after the Translate tab and before History**, so the order reads: Translate · Snapshot · History · Profile.
+- Use the same icon library the other tabs use (`expo-symbols` or `@expo/vector-icons`), with an icon that reads as "camera on text" — e.g. SF Symbol `camera.viewfinder` or `text.viewfinder`, or Ionicons `scan-outline`. Match the existing tabs' icon size and focused/unfocused colors from `constants/` — do not hardcode new color values.
+
+### 5b. Screen states
+
+Build the screen as an explicit state machine: `idle → captured → processing → result → error`.
+
+**Idle**
+- Brief explanatory line ("Point your camera at text to translate it").
+- Primary button: **Take photo**. Secondary: **Choose from library**.
+- The target-language selector is visible and editable here too, so the user can set it before shooting.
+
+**Captured / Processing**
+- Show the captured image immediately at the top (don't wait for the server).
+- Below it, a loading state with a specific label ("Reading text…" then "Translating…" if you can distinguish the phases).
+- Allow cancel; cancelling aborts the request and returns to idle.
+
+**Result**
+- **Image on top**: aspect-fit, rounded corners, capped at roughly 35–40% of screen height, rendered with `expo-image`.
+- **Directly underneath**, a results card containing:
+  - The **translated text** as the visual hero — largest type, highest contrast.
+  - The **detected original text** in a secondary/collapsible section labeled "Original", smaller and dimmer.
+  - The target-language selector, reusing the existing picker component so changing it re-translates the already-detected text **without re-running OCR** (cache `detectedText` in state and call the existing text-translation path).
+  - Actions row: **Copy translation**, **Retake**, **Save to history**. Add `expo-haptics` feedback on copy and on successful capture, matching how the rest of the app uses haptics.
+- Scrollable, and safe-area aware via `react-native-safe-area-context`.
+
+**Error / empty**
+- "No text found in that photo" with a Retake button when `reason === 'no_text_found'`.
+- Network/server failures: short human message plus a Retry that re-sends the same image without making the user re-shoot.
+
+### 5c. Image handling before upload
+
+- After capture, run through `expo-image-manipulator`: resize so the long edge is at most **1600px**, output JPEG at **quality 0.7**, request base64.
+- Request `base64` from the manipulator, not from ImagePicker at full resolution — full-res base64 will blow up memory and request size on device.
+
+### 5d. Data layer
+
+- Wrap the call in a `@tanstack/react-query` **mutation**, placed in a hook such as `hooks/useSnapshotTranslate.ts`, following the existing hook conventions.
+- Validate the response with zod before using it.
+- Route the request through `@workspace/api-client-react` if that's how the app's other requests are made — don't hand-roll a `fetch` if a client wrapper exists.
+
+---
+
+## 6. Permissions
+
+- Request camera and photo-library permission **at the moment of use**, not on screen mount.
+- If permission is denied, show an explanatory state with a button that calls `Linking.openSettings()`.
+- Add to `artifacts/translator/app.json` under `ios.infoPlist`:
+  - `NSCameraUsageDescription`: "LingoSwap uses your camera to photograph text so it can be translated."
+  - `NSPhotoLibraryUsageDescription`: "LingoSwap accesses your photos so you can translate text from an existing image."
+- Note in your summary that Expo Go supplies its own permission strings, so these matter for the eventual native build rather than for my Expo Go testing. **Do not run prebuild.**
+
+---
+
+## 7. History integration
+
+If a history store exists:
+
+- Add snapshot entries with a discriminator field (e.g. `type: 'snapshot'` vs the existing `'text'` / `'voice'`), carrying: detected text, translated text, source and target languages, timestamp, and either a local image URI or a small thumbnail.
+- Update the history list rendering to handle the new type **without breaking or mis-rendering existing entries** — check the existing type definitions and widen them properly rather than casting.
+- If persisting images is impractical, store text only and say so in your summary.
+
+---
+
+## 8. Edge cases to handle explicitly
+
+No text in image · blurry/low-confidence OCR · permission denied · permission previously denied and needs Settings · offline / no network · server 5xx · oversized image · very long text · non-Latin scripts (Chinese, Japanese, Korean, Arabic, Devanagari — make sure fonts and line-breaking handle these) · right-to-left text · request timeout · user cancels the picker · double-tap on the capture button · app backgrounded mid-request · rotating the device.
+
+---
+
+## 9. Acceptance criteria
+
+I'll consider this done when:
+
+- [ ] A "Snapshot" tab appears between Translate and History, styled identically to the other tabs.
+- [ ] Tapping **Take photo** opens the camera, and the captured image renders on the screen.
+- [ ] Detected text and its translation appear below the image within a reasonable time.
+- [ ] Changing the target language re-translates without re-running OCR.
+- [ ] Copy, Retake, and Save to history all work; saved snapshots show correctly in History.
+- [ ] A photo with no text produces a friendly empty state, not a crash or a raw error.
+- [ ] Everything above works in **Expo Go on a physical iPhone** — no dev build required.
+- [ ] `pnpm run typecheck` passes.
+- [ ] No changes to the STT flow, the `dev` script, `pnpm-workspace.yaml`, or `ios/`.
+
+---
+
+## 10. Do NOT
+
+- Install any native-only library or anything requiring a custom dev build.
+- Run `npm install`, `yarn`, `expo prebuild`, or `expo run:ios`.
+- Edit `pnpm-workspace.yaml` (overrides, catalog, or `minimumReleaseAge`).
+- Put any API key in client code or in an `EXPO_PUBLIC_*` variable.
+- Refactor the existing translate or speech-to-text features "while you're in there".
+- Add a new state-management library, navigation library, or HTTP client.
+- Create a parallel translation implementation.
+- Silently swap the OCR provider or invent a secret name without telling me.
+
+---
+
+## 11. What to report when you're done
+
+1. Every file created or modified, with a one-line reason each.
+2. Which OCR provider you chose, the exact secret/env var name it needs, and whether that secret already exists.
+3. Any new package installed and why it was unavoidable.
+4. Exact steps to test on my phone via Expo Go, including which processes need to be running in the Replit shell (the Expo dev server and the api-server) and the commands to start them.
+5. Any assumption you had to make, and anything you deliberately left out of scope.

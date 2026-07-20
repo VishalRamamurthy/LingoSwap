@@ -33,6 +33,8 @@ export default function HistoryScreen() {
   };
 
   const handleRestore = (item: HistoryEntry) => {
+    // Snapshot entries don't restore to the translate screen
+    if (item.type === "snapshot") return;
     router.push({
       pathname: "/",
       params: {
@@ -44,6 +46,9 @@ export default function HistoryScreen() {
     });
   };
 
+  const isSnapshot = (item: HistoryEntry) => item.type === "snapshot";
+  const isVoice = (item: HistoryEntry) => item.type === "voice" || item.isVoice;
+
   const renderItem = ({ item }: { item: HistoryEntry }) => (
     <TouchableOpacity
       style={[
@@ -51,14 +56,28 @@ export default function HistoryScreen() {
         { backgroundColor: colors.card, borderColor: colors.border },
       ]}
       onPress={() => handleRestore(item)}
-      activeOpacity={0.7}
+      activeOpacity={isSnapshot(item) ? 1 : 0.7}
     >
       <View style={styles.cardTop}>
         <View style={styles.langRow}>
-          {item.isVoice && (
+          {/* Type badge */}
+          {isSnapshot(item) && (
             <View
               style={[
-                styles.voiceBadge,
+                styles.badge,
+                {
+                  backgroundColor: colors.accent + "18",
+                  borderColor: colors.accent + "40",
+                },
+              ]}
+            >
+              <Feather name="camera" size={10} color={colors.accent} />
+            </View>
+          )}
+          {isVoice(item) && (
+            <View
+              style={[
+                styles.badge,
                 {
                   backgroundColor: colors.accent + "18",
                   borderColor: colors.accent + "40",
@@ -68,6 +87,7 @@ export default function HistoryScreen() {
               <Feather name="mic" size={10} color={colors.accent} />
             </View>
           )}
+
           <Text style={[styles.langFrom, { color: colors.mutedForeground }]}>
             {item.sourceLanguage}
           </Text>
@@ -206,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  voiceBadge: {
+  badge: {
     width: 20,
     height: 20,
     borderRadius: 10,

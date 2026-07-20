@@ -5,6 +5,7 @@ import translateRouter from "./translate";
 import voiceTranslateRouter from "./voice-translate";
 import transcribeRouter from "./transcribe";
 import ttsRouter from "./tts";
+import snapshotRouter from "./snapshot";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(translateRouter);
 router.use(voiceTranslateRouter);
 router.use(transcribeRouter);
 router.use(ttsRouter);
+router.use(snapshotRouter);
 
 export default router;

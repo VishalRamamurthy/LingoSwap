@@ -16,6 +16,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "mic", selected: "mic.fill" }} />
         <Label>Translate</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="snapshot">
+        <Icon sf={{ default: "camera.viewfinder", selected: "camera.viewfinder" }} />
+        <Label>Snapshot</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <Icon sf={{ default: "clock", selected: "clock.fill" }} />
         <Label>History</Label>
@@ -75,6 +79,18 @@ function ClassicTabLayout() {
               <SymbolView name="mic" tintColor={color} size={24} />
             ) : (
               <Feather name="mic" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="snapshot"
+        options={{
+          title: "Snapshot",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="camera.viewfinder" tintColor={color} size={24} />
+            ) : (
+              <Feather name="camera" size={22} color={color} />
             ),
         }}
       />

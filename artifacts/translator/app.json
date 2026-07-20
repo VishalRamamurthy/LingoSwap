@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "LingoSwap needs microphone access to transcribe your speech for translation."
+        "NSMicrophoneUsageDescription": "LingoSwap needs microphone access to transcribe your speech for translation.",
+        "NSCameraUsageDescription": "LingoSwap uses your camera to photograph text so it can be translated.",
+        "NSPhotoLibraryUsageDescription": "LingoSwap accesses your photos so you can translate text from an existing image."
       }
     },
     "android": {},
