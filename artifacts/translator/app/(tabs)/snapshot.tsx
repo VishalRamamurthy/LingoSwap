@@ -1,6 +1,7 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Linking,
   Platform,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -19,14 +21,25 @@ import { Feather } from "@expo/vector-icons";
 
 import { useColors } from "@/hooks/useColors";
 import { useHistory } from "@/contexts/HistoryContext";
-import { useSnapshotTranslate, type SnapshotResponse } from "@/hooks/useSnapshotTranslate";
+import {
+  useSnapshotTranslate,
+  useSnapshotMenu,
+  useMenuRetranslate,
+  type SnapshotResponse,
+  type MenuResponse,
+  type MenuItem,
+} from "@/hooks/useSnapshotTranslate";
 import { useTranslateText } from "@workspace/api-client-react";
+import { speak, stopSpeaking } from "@/lib/speech";
 import LanguageSelector from "@/components/LanguageSelector";
 import { LANGUAGES } from "@/constants/languages";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Phase = "idle" | "processing" | "result" | "empty" | "error";
+type CaptureMode = "text" | "menu";
+
+const MODE_STORAGE_KEY = "snapshot-capture-mode";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -87,6 +100,13 @@ export default function SnapshotScreen() {
   const { addEntry } = useHistory();
 
   const [phase, setPhase] = useState<Phase>("idle");
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("text");
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [notMenu, setNotMenu] = useState(false);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+  const [speakingItemId, setSpeakingItemId] = useState<string | null>(null);
+  const [reanalyzeNote, setReanalyzeNote] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [detectedText, setDetectedText] = useState("");
@@ -105,13 +125,45 @@ export default function SnapshotScreen() {
   const isFirstResultRef = useRef(true);
 
   const snapshotMutation = useSnapshotTranslate();
+  const menuMutation = useSnapshotMenu();
+  const menuRetranslateMutation = useMenuRetranslate();
   const retranslateMutation = useTranslateText();
+
+  // Load the persisted capture mode once on mount
+  useEffect(() => {
+    AsyncStorage.getItem(MODE_STORAGE_KEY)
+      .then((v) => {
+        if (v === "menu" || v === "text") setCaptureMode(v);
+      })
+      .catch(() => {});
+  }, []);
+
+  const changeCaptureMode = (next: CaptureMode) => {
+    if (next === captureMode) return;
+    setCaptureMode(next);
+    AsyncStorage.setItem(MODE_STORAGE_KEY, next).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Re-analyze the same photo in the new mode (one extra OCR call — noted inline)
+    if ((phase === "result" || phase === "empty") && imageBase64 && imageUri) {
+      setReanalyzeNote(true);
+      runOCRWithMode(imageBase64, imageUri, targetLanguage, next);
+    }
+  };
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const resetToIdle = () => {
     snapshotMutation.reset();
+    menuMutation.reset();
+    menuRetranslateMutation.reset();
     retranslateMutation.reset();
+    setMenuItems([]);
+    setNotMenu(false);
+    setExpandedItemId(null);
+    setCopiedItemId(null);
+    setSpeakingItemId(null);
+    setReanalyzeNote(false);
     setPhase("idle");
     setImageUri(null);
     setImageBase64(null);
@@ -141,29 +193,60 @@ export default function SnapshotScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const runOCR = (base64: string, uri: string, lang: string) => {
+  const handleOcrError = (err: Error & { code?: string }) => {
+    setReanalyzeNote(false);
+    if (err.code === "ocr_not_configured" || err.code === "ocr_invalid_key") {
+      setErrorMessage(
+        `${err.message}\n\nThe app admin needs to add a valid OCR_SPACE_API_KEY secret in the Replit Secrets panel.`,
+      );
+    } else {
+      setErrorMessage(err.message || "Something went wrong. Please try again.");
+    }
+    setPhase("error");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  };
+
+  const applyMenuResult = (data: MenuResponse) => {
+    setReanalyzeNote(false);
+    setMenuItems(data.items);
+    setNotMenu(data.reason === "not_a_menu" || data.items.length < 2);
+    setExpandedItemId(null);
+    prevTargetLangRef.current = targetLanguage;
+    setPhase("result");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const runOCRWithMode = (base64: string, uri: string, lang: string, mode: CaptureMode) => {
     setImageUri(uri);
     setImageBase64(base64);
     setPhase("processing");
     snapshotMutation.reset();
+    menuMutation.reset();
+
+    if (mode === "menu") {
+      menuMutation.mutate(
+        { image: base64, mimeType: "image/jpeg", targetLanguage: lang, mode: "menu" },
+        { onSuccess: applyMenuResult, onError: handleOcrError },
+      );
+      return;
+    }
 
     snapshotMutation.mutate(
       { image: base64, mimeType: "image/jpeg", targetLanguage: lang },
       {
-        onSuccess: applyResult,
-        onError: (err: Error & { code?: string }) => {
-          if (err.code === "ocr_not_configured" || err.code === "ocr_invalid_key") {
-            setErrorMessage(
-              `${err.message}\n\nThe app admin needs to add a valid OPENAI_API_KEY secret in the Replit Secrets panel.`,
-            );
-          } else {
-            setErrorMessage(err.message || "Something went wrong. Please try again.");
-          }
-          setPhase("error");
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        onSuccess: (data) => {
+          setReanalyzeNote(false);
+          setNotMenu(false);
+          setMenuItems([]);
+          applyResult(data);
         },
+        onError: handleOcrError,
       },
     );
+  };
+
+  const runOCR = (base64: string, uri: string, lang: string) => {
+    runOCRWithMode(base64, uri, lang, captureMode);
   };
 
   const handleCapture = async (fromLibrary: boolean) => {
@@ -188,7 +271,33 @@ export default function SnapshotScreen() {
   };
 
   const handleRetranslate = (newLang: string) => {
-    if (!detectedText || phase !== "result") return;
+    if (phase !== "result") return;
+
+    // Menu mode: re-translate from the CACHED items — never re-runs OCR.
+    if (captureMode === "menu") {
+      if (menuItems.length === 0) {
+        setTargetLanguage(newLang);
+        return;
+      }
+      setTargetLanguage(newLang);
+      menuRetranslateMutation.mutate(
+        {
+          items: menuItems.map(({ id, originalText, price, isSectionHeader }) => ({
+            id,
+            originalText,
+            price,
+            isSectionHeader,
+          })),
+          targetLanguage: newLang,
+        },
+        {
+          onSuccess: (data) => setMenuItems(data.items),
+        },
+      );
+      return;
+    }
+
+    if (!detectedText) return;
     // If this is the very first language-change trigger after entering result
     // state (fired by the LanguageSelector's onSelect), fire immediately.
     setTargetLanguage(newLang);
@@ -221,17 +330,47 @@ export default function SnapshotScreen() {
   };
 
   const handleSaveToHistory = () => {
-    if (!detectedText || !translatedText) return;
-    addEntry({
-      type: "snapshot",
-      sourceText: detectedText,
-      translatedText,
-      sourceLanguage: detectedLanguage || "auto",
-      targetLanguage,
-    });
+    if (captureMode === "menu") {
+      if (menuItems.length === 0) return;
+      addEntry({
+        type: "menu",
+        items: menuItems,
+        imageUri: imageUri ?? undefined,
+        sourceLanguage: detectedLanguage || "auto",
+        targetLanguage,
+      });
+    } else {
+      if (!detectedText || !translatedText) return;
+      addEntry({
+        type: "snapshot",
+        sourceText: detectedText,
+        translatedText,
+        sourceLanguage: detectedLanguage || "auto",
+        targetLanguage,
+      });
+    }
     setSavedToHistory(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => setSavedToHistory(false), 2500);
+  };
+
+  const handleCopyItem = async (item: MenuItem) => {
+    await Clipboard.setStringAsync(item.translatedText || item.originalText);
+    setCopiedItemId(item.id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setTimeout(() => setCopiedItemId(null), 2000);
+  };
+
+  const handleSpeakItem = async (item: MenuItem) => {
+    const text = item.translatedText || item.originalText;
+    if (!text) return;
+    setSpeakingItemId(item.id);
+    try {
+      await stopSpeaking();
+      await speak(text, targetLanguage);
+    } finally {
+      setSpeakingItemId(null);
+    }
   };
 
   // ── Common computed values ─────────────────────────────────────────────────
@@ -260,6 +399,40 @@ export default function SnapshotScreen() {
     </View>
   );
 
+  // ── Render: capture-mode segmented control ────────────────────────────────
+
+  const ModeSelector = (
+    <View style={styles.modeSelectorRow}>
+      <View style={[styles.modeSelectorPill, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+        {(["text", "menu"] as CaptureMode[]).map((m) => (
+          <TouchableOpacity
+            key={m}
+            style={[
+              styles.modeSelectorOption,
+              captureMode === m && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => changeCaptureMode(m)}
+            activeOpacity={0.8}
+          >
+            <Feather
+              name={m === "text" ? "file-text" : "list"}
+              size={15}
+              color={captureMode === m ? colors.primaryForeground : colors.mutedForeground}
+            />
+            <Text
+              style={[
+                styles.modeSelectorText,
+                { color: captureMode === m ? colors.primaryForeground : colors.mutedForeground },
+              ]}
+            >
+              {m === "text" ? "Text" : "Menu"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
   // ── Render: image preview ──────────────────────────────────────────────────
 
   const ImagePreview = imageUri ? (
@@ -283,6 +456,7 @@ export default function SnapshotScreen() {
       </View>
 
       {LangBar}
+      {ModeSelector}
 
       {permissionDenied && (
         <View style={[styles.permBanner, { backgroundColor: colors.destructive + "14", borderColor: colors.destructive + "50" }]}>
@@ -347,7 +521,13 @@ export default function SnapshotScreen() {
       <View style={[styles.processingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <ActivityIndicator size="large" color={colors.accent} />
         <Text style={[styles.processingLabel, { color: colors.foreground }]}>
-          Reading text…
+          {reanalyzeNote
+            ? captureMode === "menu"
+              ? "Re-reading as a menu…"
+              : "Re-reading as text…"
+            : captureMode === "menu"
+              ? "Reading menu…"
+              : "Reading text…"}
         </Text>
         <Text style={[styles.processingHint, { color: colors.mutedForeground }]}>
           Translating to {targetLanguage}
@@ -499,6 +679,194 @@ export default function SnapshotScreen() {
     </View>
   );
 
+  // MENU RESULT ──────────────────────────────────────────────────────────────
+  const isMenuRetranslating = menuRetranslateMutation.isPending;
+
+  const renderMenuRow = ({ item }: { item: MenuItem }) => {
+    if (item.isSectionHeader) {
+      return (
+        <View style={[styles.menuSectionHeader, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.menuSectionHeaderText, { color: colors.accent }]}>
+            {item.translatedText || item.originalText}
+          </Text>
+          <Text style={[styles.menuSectionHeaderOriginal, { color: colors.mutedForeground }]}>
+            {item.originalText}
+          </Text>
+        </View>
+      );
+    }
+
+    const expanded = expandedItemId === item.id;
+    return (
+      <TouchableOpacity
+        style={[styles.menuRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+        onPress={() => {
+          setExpandedItemId(expanded ? null : item.id);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }}
+        activeOpacity={0.8}
+      >
+        <View style={styles.menuRowMain}>
+          <View style={styles.menuRowTexts}>
+            <Text
+              style={[styles.menuRowTranslated, { color: colors.foreground }]}
+              numberOfLines={expanded ? undefined : 2}
+            >
+              {isMenuRetranslating ? "…" : item.translatedText || item.originalText}
+            </Text>
+            <Text
+              style={[styles.menuRowOriginal, { color: colors.mutedForeground }]}
+              numberOfLines={expanded ? undefined : 1}
+            >
+              {item.originalText}
+            </Text>
+          </View>
+          {item.price !== null && (
+            <Text style={[styles.menuRowPrice, { color: colors.accent }]}>{item.price}</Text>
+          )}
+        </View>
+
+        {expanded && (
+          <View style={[styles.menuRowActions, { borderTopColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.menuActionBtn, { borderColor: colors.border, backgroundColor: colors.secondary }]}
+              onPress={() => handleCopyItem(item)}
+              activeOpacity={0.8}
+            >
+              <Feather
+                name={copiedItemId === item.id ? "check" : "copy"}
+                size={14}
+                color={copiedItemId === item.id ? colors.accent : colors.foreground}
+              />
+              <Text style={[styles.menuActionText, { color: colors.foreground }]}>
+                {copiedItemId === item.id ? "Copied" : "Copy"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuActionBtn, { borderColor: colors.border, backgroundColor: colors.secondary }]}
+              onPress={() => handleSpeakItem(item)}
+              activeOpacity={0.8}
+            >
+              <Feather
+                name="volume-2"
+                size={14}
+                color={speakingItemId === item.id ? colors.accent : colors.foreground}
+              />
+              <Text style={[styles.menuActionText, { color: colors.foreground }]}>
+                {speakingItemId === item.id ? "Speaking…" : "Speak"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderMenuResult = () => (
+    <View style={[styles.flex, { backgroundColor: colors.background }]}>
+      <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <TouchableOpacity onPress={resetToIdle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Feather name="x" size={22} color={colors.mutedForeground} />
+        </TouchableOpacity>
+      </View>
+
+      {notMenu ? (
+        <ScrollView contentContainerStyle={{ paddingBottom: bottomPadding }}>
+          {ImagePreview}
+          <View style={[styles.emptyContent, { paddingTop: 32 }]}>
+            <View style={[styles.idleIconWrap, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Feather name="help-circle" size={32} color={colors.mutedForeground} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              This doesn't look like a menu
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
+              We couldn't find menu items in this photo. Try Text mode to translate it as one block of text.
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: colors.accent, borderColor: "#000" }]}
+              onPress={() => changeCaptureMode("text")}
+              activeOpacity={0.85}
+            >
+              <Feather name="file-text" size={18} color="#FFFFFF" />
+              <Text style={styles.primaryBtnText}>Switch to Text mode</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.cancelBtn, { borderColor: colors.border, marginTop: 0 }]}
+              onPress={resetToIdle}
+            >
+              <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Go back</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={menuItems}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMenuRow}
+          ListHeaderComponent={
+            <View>
+              {ImagePreview}
+              {ModeSelector}
+              <View style={[styles.resultLangRow, { borderColor: colors.border, paddingHorizontal: 16 }]}>
+                <Text style={[styles.resultLangLabel, { color: colors.mutedForeground }]}>
+                  {isMenuRetranslating ? "Translating…" : `${menuItems.filter((i) => !i.isSectionHeader).length} items`}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.langChip, { backgroundColor: colors.accent, borderColor: colors.border }]}
+                  onPress={() => setIsLangSelectorOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.langChipText, { color: colors.accentForeground }]} numberOfLines={1}>
+                    {targetLanguage}
+                  </Text>
+                  <Feather name="chevron-down" size={13} color={colors.accentForeground} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          }
+          ListFooterComponent={
+            <View style={[styles.actionsRow, { paddingHorizontal: 16, paddingTop: 12 }]}>
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: colors.secondary, borderColor: colors.border, flex: 1 }]}
+                onPress={() => handleCapture(false)}
+                activeOpacity={0.8}
+              >
+                <Feather name="camera" size={16} color={colors.foreground} />
+                <Text style={[styles.actionBtnText, { color: colors.foreground }]}>Retake</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn,
+                  {
+                    backgroundColor: savedToHistory ? colors.accent : colors.secondary,
+                    borderColor: colors.border,
+                    flex: 1,
+                  },
+                ]}
+                onPress={handleSaveToHistory}
+                disabled={savedToHistory}
+                activeOpacity={0.8}
+              >
+                <Feather
+                  name={savedToHistory ? "check" : "bookmark"}
+                  size={16}
+                  color={savedToHistory ? "#FFFFFF" : colors.foreground}
+                />
+                <Text style={[styles.actionBtnText, { color: savedToHistory ? "#FFFFFF" : colors.foreground }]}>
+                  {savedToHistory ? "Saved" : "Save"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          }
+          contentContainerStyle={{ paddingBottom: bottomPadding, gap: 8 }}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </View>
+  );
+
   // EMPTY ────────────────────────────────────────────────────────────────────
   const renderEmpty = () => (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
@@ -579,7 +947,7 @@ export default function SnapshotScreen() {
     <>
       {phase === "idle" && renderIdle()}
       {phase === "processing" && renderProcessing()}
-      {phase === "result" && renderResult()}
+      {phase === "result" && (captureMode === "menu" ? renderMenuResult() : renderResult())}
       {phase === "empty" && renderEmpty()}
       {phase === "error" && renderError()}
 
@@ -860,6 +1228,96 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   actionBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+  },
+
+  // Capture-mode selector
+  modeSelectorRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  modeSelectorPill: {
+    flexDirection: "row",
+    borderRadius: 12,
+    borderWidth: 2,
+    padding: 3,
+    alignSelf: "stretch",
+  },
+  modeSelectorOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 9,
+  },
+  modeSelectorText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+  },
+
+  // Menu list
+  menuSectionHeader: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingBottom: 6,
+    borderBottomWidth: 2,
+  },
+  menuSectionHeaderText: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 17,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  menuSectionHeaderOriginal: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 12,
+  },
+  menuRow: {
+    marginHorizontal: 16,
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 14,
+  },
+  menuRowMain: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  menuRowTexts: { flex: 1, gap: 2 },
+  menuRowTranslated: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  menuRowOriginal: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+  },
+  menuRowPrice: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+  },
+  menuRowActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  menuActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  menuActionText: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 13,
   },

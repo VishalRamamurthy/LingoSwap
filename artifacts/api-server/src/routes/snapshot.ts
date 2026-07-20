@@ -1,105 +1,20 @@
 import { Router, type IRouter } from "express";
-import { z } from "zod";
+import { SnapshotTranslateBody, MenuRetranslateBody } from "../lib/snapshot-schemas";
 import {
   translateWithDeepL,
   TranslationConfigError,
   TranslationApiError,
 } from "../lib/deepl-translate";
+import { ocrSpaceRequest, extractParsedText, OcrError } from "../lib/ocr-space";
+import { runMenuPipeline, translateMenuItems } from "../lib/menu-pipeline";
+import type { MenuItem } from "../lib/menu-segmentation";
 import { incrementTranslationCount } from "./auth-stats";
-
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-const SnapshotTranslateBody = z.object({
-  image: z.string().min(1, "image is required"),
-  mimeType: z.literal("image/jpeg"),
-  targetLanguage: z.string().min(1, "targetLanguage is required"),
-  sourceLanguage: z.string().optional(),
-});
 
 // 8 MB binary ≈ 10.7 MB base64
 const MAX_BASE64_LEN = Math.ceil((8 * 1024 * 1024 * 4) / 3);
 
 // ---------------------------------------------------------------------------
-// OCR  (provider: ocr.space)
-// ---------------------------------------------------------------------------
-
-const OCR_ENGINE = process.env.OCR_ENGINE ?? "2"; // 2 = more accurate
-
-interface OcrSpaceResult {
-  ParsedResults?: { ParsedText?: string; ErrorMessage?: string; ErrorDetails?: string }[];
-  OCRExitCode?: number;
-  ErrorMessage?: string | string[];
-  IsErroredOnProcessing?: boolean;
-}
-
-async function extractText(imageBase64: string): Promise<string> {
-  const apiKey = process.env.OCR_SPACE_API_KEY;
-  if (!apiKey) {
-    const err = new Error("OCR_SPACE_API_KEY secret is required for Snapshot OCR. Add it in the Replit Secrets panel.");
-    (err as Error & { code: string }).code = "ocr_not_configured";
-    throw err;
-  }
-
-  const body = new URLSearchParams({
-    base64Image: `data:image/jpeg;base64,${imageBase64}`,
-    apikey: apiKey,
-    OCREngine: OCR_ENGINE,
-    detectOrientation: "true",
-    isTable: "false",
-    scale: "true",
-  });
-
-  const res = await fetch("https://api.ocr.space/parse/image", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-
-  if (res.status === 403) {
-    const err = new Error("Your OCR.space API key is invalid or unauthorised. Check the OCR_SPACE_API_KEY secret.");
-    (err as Error & { code: string }).code = "ocr_invalid_key";
-    throw err;
-  }
-
-  if (!res.ok) {
-    throw new Error(`OCR.space returned HTTP ${res.status}`);
-  }
-
-  const data = (await res.json()) as OcrSpaceResult;
-
-  if (data.IsErroredOnProcessing) {
-    const msg = Array.isArray(data.ErrorMessage)
-      ? data.ErrorMessage.join(" ")
-      : (data.ErrorMessage ?? "OCR.space processing error");
-
-    // Key-related errors
-    if (/unauthori[sz]ed|invalid.*key|api.*key/i.test(msg)) {
-      const err = new Error(`OCR.space API key error: ${msg}`);
-      (err as Error & { code: string }).code = "ocr_invalid_key";
-      throw err;
-    }
-
-    throw new Error(msg);
-  }
-
-  // OCRExitCode 1 = success, 2 = partially successful, others = failure
-  const exitCode = data.OCRExitCode ?? 0;
-  if (exitCode !== 1 && exitCode !== 2) {
-    throw new Error(`OCR.space exited with code ${exitCode}`);
-  }
-
-  const text = (data.ParsedResults ?? [])
-    .map((r) => r.ParsedText ?? "")
-    .join("\n")
-    .trim();
-
-  return text;
-}
-
-// ---------------------------------------------------------------------------
-// Translation (chunked for long text)
+// Translation (chunked for long text — Text mode)
 // ---------------------------------------------------------------------------
 
 const CHUNK_SIZE = 4_000; // DeepL max is 5,000 chars; leave headroom
@@ -141,7 +56,36 @@ async function translateText(
 }
 
 // ---------------------------------------------------------------------------
-// Route
+// Error → HTTP mapping helpers
+// ---------------------------------------------------------------------------
+
+function sendOcrError(res: { status: (n: number) => { json: (b: unknown) => void } }, err: unknown): void {
+  const e = err as Error & { code?: string };
+  if (e instanceof OcrError && e.code === "ocr_not_configured") {
+    res.status(503).json({ message: e.message, code: "ocr_not_configured" });
+    return;
+  }
+  if (e instanceof OcrError && e.code === "ocr_invalid_key") {
+    res.status(502).json({ message: e.message, code: "ocr_invalid_key" });
+    return;
+  }
+  res.status(502).json({ message: "Could not read text from the image. Please try again." });
+}
+
+function sendTranslationError(res: { status: (n: number) => { json: (b: unknown) => void } }, err: unknown): boolean {
+  if (err instanceof TranslationConfigError) {
+    res.status(503).json({ message: err.message });
+    return true;
+  }
+  if (err instanceof TranslationApiError && err.status === 400) {
+    res.status(400).json({ message: err.message });
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Routes
 // ---------------------------------------------------------------------------
 
 const router: IRouter = Router();
@@ -153,33 +97,59 @@ router.post("/snapshot/translate", async (req, res) => {
     return;
   }
 
-  const { image, targetLanguage, sourceLanguage } = parsed.data;
+  const { image, targetLanguage, sourceLanguage, mode } = parsed.data;
 
+  // Oversized payloads are rejected BEFORE any outbound request.
   if (image.length > MAX_BASE64_LEN) {
     res.status(413).json({ message: "Image is too large. Please use a smaller photo (max 8 MB)." });
     return;
   }
 
-  // ── OCR ─────────────────────────────────────────────────────────────────
+  const autoDetect = !sourceLanguage || sourceLanguage.toLowerCase() === "auto";
+  const srcLang = autoDetect ? undefined : sourceLanguage;
+
+  // ── MENU MODE ────────────────────────────────────────────────────────────
+  if (mode === "menu") {
+    try {
+      const result = await runMenuPipeline(
+        {
+          ocr: (img, opts) => ocrSpaceRequest(img, opts),
+          translate: async (payload) =>
+            (await translateWithDeepL(payload, targetLanguage, srcLang)).translatedText,
+          warn: (msg) => req.log.warn(msg),
+        },
+        image,
+      );
+
+      if (!result.isLikelyMenu) {
+        res.json({ mode: "menu", items: result.items, targetLanguage, reason: "not_a_menu" });
+        return;
+      }
+
+      void incrementTranslationCount(req);
+      res.json({ mode: "menu", items: result.items, targetLanguage });
+      return;
+    } catch (err) {
+      if (err instanceof OcrError) {
+        req.log.error({ err: err.message }, "Menu OCR failed");
+        sendOcrError(res, err);
+        return;
+      }
+      if (sendTranslationError(res, err)) return;
+      req.log.error({ err: (err as Error).message }, "Menu pipeline failed");
+      res.status(502).json({ message: "Could not analyse the menu. Please try again." });
+      return;
+    }
+  }
+
+  // ── TEXT MODE (existing behaviour) ───────────────────────────────────────
   let detectedText: string;
   try {
-    detectedText = await extractText(image);
+    const ocrData = await ocrSpaceRequest(image, { isTable: false, isOverlayRequired: false });
+    detectedText = extractParsedText(ocrData);
   } catch (err) {
-    const errorMessage = (err as Error).message ?? String(err);
-    req.log.error({ err: errorMessage }, "OCR failed");
-
-    const errWithCode = err as Error & { code?: string };
-    if (errWithCode.code === "ocr_not_configured") {
-      res.status(503).json({ message: errWithCode.message, code: "ocr_not_configured" });
-      return;
-    }
-
-    if (errWithCode.code === "ocr_invalid_key") {
-      res.status(502).json({ message: errWithCode.message, code: "ocr_invalid_key" });
-      return;
-    }
-
-    res.status(502).json({ message: "Could not read text from the image. Please try again." });
+    req.log.error({ err: (err as Error).message }, "OCR failed");
+    sendOcrError(res, err);
     return;
   }
 
@@ -188,25 +158,11 @@ router.post("/snapshot/translate", async (req, res) => {
     return;
   }
 
-  // ── Translation ──────────────────────────────────────────────────────────
-  const autoDetect = !sourceLanguage || sourceLanguage.toLowerCase() === "auto";
-
   let translationResult: { translatedText: string; detectedLanguage?: string };
   try {
-    translationResult = await translateText(
-      detectedText,
-      targetLanguage,
-      autoDetect ? undefined : sourceLanguage,
-    );
+    translationResult = await translateText(detectedText, targetLanguage, srcLang);
   } catch (err) {
-    if (err instanceof TranslationConfigError) {
-      res.status(503).json({ message: err.message });
-      return;
-    }
-    if (err instanceof TranslationApiError && err.status === 400) {
-      res.status(400).json({ message: err.message });
-      return;
-    }
+    if (sendTranslationError(res, err)) return;
     req.log.error({ err: (err as Error).message }, "Translation failed in snapshot route");
     res.status(502).json({ message: "Translation failed. Please try again." });
     return;
@@ -220,6 +176,34 @@ router.post("/snapshot/translate", async (req, res) => {
     translatedText: translationResult.translatedText,
     targetLanguage,
   });
+});
+
+// Re-translate cached menu items on language change — ZERO OCR calls.
+router.post("/snapshot/menu/retranslate", async (req, res) => {
+  const parsed = MenuRetranslateBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid request" });
+    return;
+  }
+
+  const { items, targetLanguage, sourceLanguage } = parsed.data;
+  const autoDetect = !sourceLanguage || sourceLanguage.toLowerCase() === "auto";
+
+  try {
+    const translated = await translateMenuItems(
+      items.map((i): MenuItem => ({ ...i, translatedText: "" })),
+      async (payload) =>
+        (await translateWithDeepL(payload, targetLanguage, autoDetect ? undefined : sourceLanguage))
+          .translatedText,
+      (msg) => req.log.warn(msg),
+    );
+    void incrementTranslationCount(req);
+    res.json({ mode: "menu", items: translated, targetLanguage });
+  } catch (err) {
+    if (sendTranslationError(res, err)) return;
+    req.log.error({ err: (err as Error).message }, "Menu retranslate failed");
+    res.status(502).json({ message: "Translation failed. Please try again." });
+  }
 });
 
 export default router;

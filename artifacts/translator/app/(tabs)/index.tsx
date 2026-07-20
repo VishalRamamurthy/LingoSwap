@@ -24,6 +24,7 @@ import { LANGUAGES } from "@/constants/languages";
 import { COUNTRY_TO_LANGUAGE } from "@/constants/countryLanguages";
 import LanguageSelector from "@/components/LanguageSelector";
 import SpeakerButton from "@/components/SpeakerButton";
+import ConversationMode from "@/components/ConversationMode";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, {
   useSharedValue,
@@ -36,7 +37,7 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 
-type Mode = "voice" | "text";
+type Mode = "voice" | "text" | "conversation";
 type RecordingState = "idle" | "recording" | "processing";
 
 export default function TranslateScreen() {
@@ -285,6 +286,42 @@ export default function TranslateScreen() {
     }
   };
 
+  /**
+   * Cancel an active Voice recording WITHOUT processing it — used when the
+   * user switches modes mid-recording, so the mic never stays hot in the
+   * background. Stops/unloads the recorder, deletes the temp file, and
+   * resets the iOS audio session.
+   */
+  const cancelRecording = async () => {
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    setRecordingState("idle");
+    if (!rec) return;
+    try {
+      await rec.stopAndUnloadAsync();
+    } catch {
+      // already unloaded
+    }
+    const uri = rec.getURI();
+    if (uri) {
+      FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+    }
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {
+      // no-op
+    }
+  };
+
+  const changeMode = (next: Mode) => {
+    if (next === mode) return;
+    // Leaving Voice mode mid-recording must release the microphone.
+    if (recordingState === "recording") {
+      void cancelRecording();
+    }
+    setMode(next);
+  };
+
   const handleMicPress = () => {
     // Block new recordings until the full transcribe + translate cycle ends,
     // so an older in-flight request can't race a newer one.
@@ -345,7 +382,8 @@ export default function TranslateScreen() {
         <Text style={[styles.wordmark, { color: colors.primary }]}>LingoSwap</Text>
       </View>
 
-      {/* Language selectors */}
+      {/* Language selectors (conversation mode has its own per-side pickers) */}
+      {mode !== "conversation" && (
       <View
         style={[
           styles.langBar,
@@ -402,6 +440,7 @@ export default function TranslateScreen() {
           <Feather name="chevron-down" size={14} color={colors.accentForeground} />
         </TouchableOpacity>
       </View>
+      )}
 
       {/* Mode toggle */}
       <View style={[styles.modeRow, { backgroundColor: colors.background }]}>
@@ -411,7 +450,7 @@ export default function TranslateScreen() {
               styles.modeOption,
               mode === "voice" && { backgroundColor: colors.primary },
             ]}
-            onPress={() => setMode("voice")}
+            onPress={() => changeMode("voice")}
           >
             <Feather
               name="mic"
@@ -435,7 +474,7 @@ export default function TranslateScreen() {
               styles.modeOption,
               mode === "text" && { backgroundColor: colors.primary },
             ]}
-            onPress={() => setMode("text")}
+            onPress={() => changeMode("text")}
           >
             <Feather
               name="edit-2"
@@ -454,9 +493,42 @@ export default function TranslateScreen() {
               Type
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.modeOption,
+              mode === "conversation" && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => changeMode("conversation")}
+          >
+            <Feather
+              name="message-circle"
+              size={16}
+              color={
+                mode === "conversation" ? colors.primaryForeground : colors.mutedForeground
+              }
+            />
+            <Text
+              style={[
+                styles.modeText,
+                {
+                  color:
+                    mode === "conversation"
+                      ? colors.primaryForeground
+                      : colors.mutedForeground,
+                },
+              ]}
+            >
+              Talk
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
+      {mode === "conversation" ? (
+        <View style={{ flex: 1, paddingBottom: Platform.OS === "web" ? 96 : insets.bottom + 90 }}>
+          <ConversationMode />
+        </View>
+      ) : (
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -694,6 +766,7 @@ export default function TranslateScreen() {
           </View>
         ) : null}
       </ScrollView>
+      )}
 
       <LanguageSelector
         visible={isSourceSelectorOpen}

@@ -33,8 +33,8 @@ export default function HistoryScreen() {
   };
 
   const handleRestore = (item: HistoryEntry) => {
-    // Snapshot entries don't restore to the translate screen
-    if (item.type === "snapshot") return;
+    // Snapshot / menu / conversation entries don't restore to the translate screen
+    if (item.type === "snapshot" || item.type === "menu" || item.type === "conversation") return;
     router.push({
       pathname: "/",
       params: {
@@ -47,7 +47,37 @@ export default function HistoryScreen() {
   };
 
   const isSnapshot = (item: HistoryEntry) => item.type === "snapshot";
-  const isVoice = (item: HistoryEntry) => item.type === "voice" || item.isVoice;
+  const isVoice = (item: HistoryEntry) =>
+    item.type === "voice" || (item.type !== "menu" && item.type !== "conversation" && item.isVoice);
+
+  const previewLines = (item: HistoryEntry): { top: string; bottom: string } => {
+    if (item.type === "menu") {
+      const dishes = item.items.filter((i) => !i.isSectionHeader);
+      return {
+        top: `Menu — ${dishes.length} item${dishes.length === 1 ? "" : "s"}`,
+        bottom: dishes
+          .slice(0, 3)
+          .map((i) => i.translatedText || i.originalText)
+          .join(" · "),
+      };
+    }
+    if (item.type === "conversation") {
+      const last = item.turns[item.turns.length - 1];
+      return {
+        top: `Conversation — ${item.turns.length} turn${item.turns.length === 1 ? "" : "s"}`,
+        bottom: last ? `${last.original} → ${last.translated}` : "",
+      };
+    }
+    return { top: item.sourceText, bottom: item.translatedText };
+  };
+
+  const typeBadgeIcon = (item: HistoryEntry): React.ComponentProps<typeof Feather>["name"] | null => {
+    if (item.type === "menu") return "list";
+    if (item.type === "conversation") return "message-circle";
+    if (isSnapshot(item)) return "camera";
+    if (isVoice(item)) return "mic";
+    return null;
+  };
 
   const renderItem = ({ item }: { item: HistoryEntry }) => (
     <TouchableOpacity
@@ -61,7 +91,7 @@ export default function HistoryScreen() {
       <View style={styles.cardTop}>
         <View style={styles.langRow}>
           {/* Type badge */}
-          {isSnapshot(item) && (
+          {typeBadgeIcon(item) !== null && (
             <View
               style={[
                 styles.badge,
@@ -71,20 +101,7 @@ export default function HistoryScreen() {
                 },
               ]}
             >
-              <Feather name="camera" size={10} color={colors.accent} />
-            </View>
-          )}
-          {isVoice(item) && (
-            <View
-              style={[
-                styles.badge,
-                {
-                  backgroundColor: colors.accent + "18",
-                  borderColor: colors.accent + "40",
-                },
-              ]}
-            >
-              <Feather name="mic" size={10} color={colors.accent} />
+              <Feather name={typeBadgeIcon(item)!} size={10} color={colors.accent} />
             </View>
           )}
 
@@ -116,14 +133,14 @@ export default function HistoryScreen() {
         style={[styles.sourceText, { color: colors.mutedForeground }]}
         numberOfLines={1}
       >
-        {item.sourceText}
+        {previewLines(item).top}
       </Text>
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
       <Text
         style={[styles.translatedText, { color: colors.foreground }]}
         numberOfLines={2}
       >
-        {item.translatedText}
+        {previewLines(item).bottom}
       </Text>
     </TouchableOpacity>
   );
