@@ -54,14 +54,19 @@ export function useSnapshotTranslate() {
       const json: unknown = await res.json();
 
       if (!res.ok) {
+        const obj =
+          typeof json === "object" && json !== null
+            ? (json as { message?: unknown; code?: unknown })
+            : {};
         const message =
-          typeof json === "object" &&
-          json !== null &&
-          "message" in json &&
-          typeof (json as { message: unknown }).message === "string"
-            ? (json as { message: string }).message
+          typeof obj.message === "string"
+            ? obj.message
             : "Snapshot translation failed.";
-        throw new Error(message);
+        const code =
+          typeof obj.code === "string" ? obj.code : undefined;
+        const error = new Error(message) as Error & { code?: string };
+        error.code = code;
+        throw error;
       }
 
       return SnapshotResponseSchema.parse(json);

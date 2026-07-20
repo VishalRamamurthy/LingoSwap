@@ -139,7 +139,25 @@ router.post("/snapshot/translate", async (req, res) => {
   try {
     detectedText = await extractText(image);
   } catch (err) {
-    req.log.error({ err: (err as Error).message }, "OCR failed");
+    const errorMessage = (err as Error).message ?? String(err);
+    req.log.error({ err: errorMessage }, "OCR failed");
+
+    if (errorMessage.includes("OPENAI_API_KEY secret is required")) {
+      res.status(503).json({
+        message: "Snapshot OCR is not configured. Add the OPENAI_API_KEY secret in your Replit settings.",
+        code: "ocr_not_configured",
+      });
+      return;
+    }
+
+    if (errorMessage.includes("401") || errorMessage.includes("Incorrect API key")) {
+      res.status(502).json({
+        message: "Your OpenAI API key is invalid. Check the OPENAI_API_KEY secret.",
+        code: "ocr_invalid_key",
+      });
+      return;
+    }
+
     res.status(502).json({ message: "Could not read text from the image. Please try again." });
     return;
   }

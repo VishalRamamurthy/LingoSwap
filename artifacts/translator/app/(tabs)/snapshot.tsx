@@ -151,8 +151,14 @@ export default function SnapshotScreen() {
       { image: base64, mimeType: "image/jpeg", targetLanguage: lang },
       {
         onSuccess: applyResult,
-        onError: (err: Error) => {
-          setErrorMessage(err.message || "Something went wrong. Please try again.");
+        onError: (err: Error & { code?: string }) => {
+          if (err.code === "ocr_not_configured" || err.code === "ocr_invalid_key") {
+            setErrorMessage(
+              `${err.message}\n\nThe app admin needs to add a valid OPENAI_API_KEY secret in the Replit Secrets panel.`,
+            );
+          } else {
+            setErrorMessage(err.message || "Something went wrong. Please try again.");
+          }
           setPhase("error");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         },
