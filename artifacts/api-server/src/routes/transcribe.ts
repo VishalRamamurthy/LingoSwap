@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { speechToText } from "@workspace/integrations-openai-ai-server/audio";
+import { speechToText, detectAudioFormat } from "@workspace/integrations-openai-ai-server/audio";
 import { TranscribeAudioBody } from "@workspace/api-zod";
 import { Buffer } from "node:buffer";
 import { incrementTranslationCount } from "./auth-stats";
@@ -19,8 +19,22 @@ router.post("/transcribe", async (req, res) => {
   const { audioBase64 } = parsed.data;
 
   try {
-    // AssemblyAI accepts raw audio bytes directly — no format conversion needed.
     const rawBuffer = Buffer.from(audioBase64, "base64");
+
+    // Reject empty payloads before touching any external service.
+    if (rawBuffer.length === 0) {
+      res.status(400).json({ message: "No audio data provided." });
+      return;
+    }
+
+    // Reject formats the pipeline cannot handle so callers get a 4xx, not a 5xx.
+    const fmt = detectAudioFormat(rawBuffer);
+    if (fmt === "unknown") {
+      res.status(400).json({
+        message: "Unsupported audio format. Please record in M4A, WAV, MP3, or OGG.",
+      });
+      return;
+    }
 
     let transcription: string;
     try {

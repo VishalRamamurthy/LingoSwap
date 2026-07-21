@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Keyboard,
   ScrollView,
+  AppState,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -25,7 +26,7 @@ import { COUNTRY_TO_LANGUAGE } from "@/constants/countryLanguages";
 import LanguageSelector from "@/components/LanguageSelector";
 import SpeakerButton from "@/components/SpeakerButton";
 import ConversationMode from "@/components/ConversationMode";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -53,6 +54,8 @@ export default function TranslateScreen() {
   const [copied, setCopied] = useState(false);
   const [isSourceSelectorOpen, setIsSourceSelectorOpen] = useState(false);
   const [isTargetSelectorOpen, setIsTargetSelectorOpen] = useState(false);
+  // Distinct voice error states surfaced to the UI separately from API mutation errors.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);
   // Correlates each translation request so a stale response can never
   // overwrite the result/history of a newer one.
@@ -175,6 +178,7 @@ export default function TranslateScreen() {
     setSourceText("");
     setTranslatedText("");
     setDetectedLang("");
+    setVoiceError(null);
     translateMutation.reset();
     transcribeMutation.reset();
   };
@@ -219,9 +223,14 @@ export default function TranslateScreen() {
   };
 
   const startRecording = async () => {
+    setVoiceError(null);
     try {
       const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) {
+        // Show a clear, persistent error — haptics alone is not enough.
+        setVoiceError(
+          "Microphone access is required. Please enable it in Settings → LingoSwap."
+        );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
@@ -237,49 +246,90 @@ export default function TranslateScreen() {
       clearResult();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     } catch {
+      // If recording setup fails after audio mode was set, reset it.
+      Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };
 
   const stopRecording = async () => {
     if (!recordingRef.current) return;
+
+    // ── KEY FIX: capture URI *before* stopAndUnloadAsync ──────────────────────
+    // expo-av SDK 54 returns null from getURI() once a recording is unloaded.
+    // On real iOS hardware in Expo Go this was silently failing: stopAndUnload
+    // clears the URI, getURI() returns null, we'd throw and catch silently,
+    // leaving the UI stuck with only a haptic and no visible error.
+    const uri = recordingRef.current.getURI();
+
     setRecordingState("processing");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       await recordingRef.current.stopAndUnloadAsync();
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      const uri = recordingRef.current.getURI();
       recordingRef.current = null;
 
-      if (!uri) throw new Error("No recording URI");
+      if (!uri) {
+        setVoiceError("Recording failed to save. Please try again.");
+        setRecordingState("idle");
+        return;
+      }
 
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: "base64",
       });
+      // Clean up the temp file regardless of what happens next.
+      FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
 
-      // Phase 1: transcribe — show the spoken words as soon as they're ready,
-      // then Phase 2: translate (the result card shows "..." while pending).
-      transcribeMutation.mutate(
-        {
-          data: {
-            audioBase64: base64,
-            mimeType: "audio/m4a",
-          },
-        },
-        {
-          onSuccess: (data) => {
-            setSourceText(data.transcription);
-            setRecordingState("idle");
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            runTranslation(data.transcription, true);
-          },
-          onError: () => {
-            setRecordingState("idle");
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          },
-        }
+      // Guard: a zero-byte (or near-zero) base64 string means nothing was recorded.
+      if (base64.length < 10) {
+        setVoiceError("Recording was too short or empty. Please try again.");
+        setRecordingState("idle");
+        return;
+      }
+
+      // 30-second client-side timeout. The generated mutationFn doesn't accept a
+      // per-call AbortSignal, so we race the mutation against a timer promise.
+      // If the timer wins the race, the mutation keeps running in the background
+      // (react-query will eventually settle it) but the UI has already moved on.
+      const TIMEOUT_MS = 30_000;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              Object.assign(
+                new Error("Transcription timed out. Please try again."),
+                { name: "TimeoutError" }
+              )
+            ),
+          TIMEOUT_MS
+        )
       );
+
+      try {
+        // Phase 1: transcribe — show the spoken words as soon as they're ready,
+        // then Phase 2: translate (the result card shows "..." while pending).
+        const result = await Promise.race([
+          transcribeMutation.mutateAsync({
+            data: { audioBase64: base64, mimeType: "audio/m4a" },
+          }),
+          timeoutPromise,
+        ]);
+        setSourceText(result.transcription);
+        setRecordingState("idle");
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        runTranslation(result.transcription, true);
+      } catch (err) {
+        setRecordingState("idle");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        if ((err as Error)?.name === "TimeoutError") {
+          // TimeoutError is our own synthetic error — show it explicitly since
+          // react-query won't surface it as a mutation error.
+          setVoiceError((err as Error).message);
+        }
+        // Non-timeout errors are already in transcribeMutation.isError / errorMessage.
+      }
     } catch {
       setRecordingState("idle");
       recordingRef.current = null;
@@ -288,11 +338,11 @@ export default function TranslateScreen() {
 
   /**
    * Cancel an active Voice recording WITHOUT processing it — used when the
-   * user switches modes mid-recording, so the mic never stays hot in the
-   * background. Stops/unloads the recorder, deletes the temp file, and
-   * resets the iOS audio session.
+   * user switches modes mid-recording, navigates away, or the app backgrounds,
+   * so the mic never stays hot in the background. Stops/unloads the recorder,
+   * deletes the temp file, and resets the iOS audio session.
    */
-  const cancelRecording = async () => {
+  const cancelRecording = useCallback(async () => {
     const rec = recordingRef.current;
     recordingRef.current = null;
     setRecordingState("idle");
@@ -311,7 +361,24 @@ export default function TranslateScreen() {
     } catch {
       // no-op
     }
-  };
+  }, []);
+
+  // Stop recording when the screen loses focus (tab switch / navigation push).
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void cancelRecording();
+      };
+    }, [cancelRecording])
+  );
+
+  // Stop recording when the app goes to the background — a hot mic is a privacy bug.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") void cancelRecording();
+    });
+    return () => sub.remove();
+  }, [cancelRecording]);
 
   const changeMode = (next: Mode) => {
     if (next === mode) return;
@@ -655,7 +722,25 @@ export default function TranslateScreen() {
           </View>
         )}
 
-        {/* Error state */}
+        {/* Voice-recording error (permission denied, empty recording, timeout) */}
+        {voiceError && (
+          <View
+            style={[
+              styles.errorCard,
+              {
+                backgroundColor: colors.destructive + "12",
+                borderColor: colors.destructive + "60",
+              },
+            ]}
+          >
+            <Feather name="mic-off" size={18} color={colors.destructive} />
+            <Text style={[styles.errorText, { color: colors.destructive }]}>
+              {voiceError}
+            </Text>
+          </View>
+        )}
+
+        {/* API error (transcription / translation network failure) */}
         {hasError && (
           <View
             style={[
