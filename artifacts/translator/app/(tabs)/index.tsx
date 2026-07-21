@@ -224,8 +224,10 @@ export default function TranslateScreen() {
 
   const startRecording = async () => {
     setVoiceError(null);
+    console.log("[STT] startRecording called");
     try {
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted, status } = await Audio.requestPermissionsAsync();
+      console.log(`[STT] permission status=${status}, granted=${granted}`);
       if (!granted) {
         // Show a clear, persistent error — haptics alone is not enough.
         setVoiceError(
@@ -238,15 +240,18 @@ export default function TranslateScreen() {
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
+      console.log("[STT] audio mode set, creating recording...");
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+      console.log("[STT] recording created");
       recordingRef.current = recording;
       setRecordingState("recording");
       clearResult();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    } catch {
-      // If recording setup fails after audio mode was set, reset it.
+    } catch (err) {
+      console.log("[STT] startRecording error:", (err as Error).message);
+      setVoiceError(`Recording failed: ${(err as Error).message}`);
       Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
@@ -261,6 +266,7 @@ export default function TranslateScreen() {
     // clears the URI, getURI() returns null, we'd throw and catch silently,
     // leaving the UI stuck with only a haptic and no visible error.
     const uri = recordingRef.current.getURI();
+    console.log(`[STT] stopRecording, uri captured=${uri ?? "null"}`);
 
     setRecordingState("processing");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -269,8 +275,10 @@ export default function TranslateScreen() {
       await recordingRef.current.stopAndUnloadAsync();
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       recordingRef.current = null;
+      console.log("[STT] recording stopped and unloaded");
 
       if (!uri) {
+        console.log("[STT] no uri after stop");
         setVoiceError("Recording failed to save. Please try again.");
         setRecordingState("idle");
         return;
@@ -281,9 +289,11 @@ export default function TranslateScreen() {
       });
       // Clean up the temp file regardless of what happens next.
       FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      console.log(`[STT] base64 read, length=${base64.length}`);
 
       // Guard: a zero-byte (or near-zero) base64 string means nothing was recorded.
       if (base64.length < 10) {
+        console.log("[STT] base64 too short, aborting");
         setVoiceError("Recording was too short or empty. Please try again.");
         setRecordingState("idle");
         return;
@@ -310,17 +320,20 @@ export default function TranslateScreen() {
       try {
         // Phase 1: transcribe — show the spoken words as soon as they're ready,
         // then Phase 2: translate (the result card shows "..." while pending).
+        console.log("[STT] calling transcribe mutation...");
         const result = await Promise.race([
           transcribeMutation.mutateAsync({
             data: { audioBase64: base64, mimeType: "audio/m4a" },
           }),
           timeoutPromise,
         ]);
+        console.log(`[STT] transcribe success: ${result.transcription}`);
         setSourceText(result.transcription);
         setRecordingState("idle");
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         runTranslation(result.transcription, true);
       } catch (err) {
+        console.log("[STT] transcribe error:", (err as Error).message);
         setRecordingState("idle");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         if ((err as Error)?.name === "TimeoutError") {
@@ -330,7 +343,9 @@ export default function TranslateScreen() {
         }
         // Non-timeout errors are already in transcribeMutation.isError / errorMessage.
       }
-    } catch {
+    } catch (err) {
+      console.log("[STT] stopRecording error:", (err as Error).message);
+      setVoiceError(`Recording failed: ${(err as Error).message}`);
       setRecordingState("idle");
       recordingRef.current = null;
     }
