@@ -19,7 +19,7 @@ import { useHistory } from "@/contexts/HistoryContext";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Location from "expo-location";
 import { LANGUAGES } from "@/constants/languages";
 import { COUNTRY_TO_LANGUAGE } from "@/constants/countryLanguages";
