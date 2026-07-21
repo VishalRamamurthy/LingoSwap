@@ -1,0 +1,56 @@
+# Replit Agent Prompt: Fix Speech-to-Text in Expo Go
+
+Copy everything below the line into Replit Agent.
+
+---
+
+The speech-to-text feature in the translator app (`artifacts/translator`) is broken when running in Expo Go on a physical iPhone. Recording/transcription fails there, while the app's other features (including features that call the backend at `artifacts/api-server`) work fine. Fix it so STT works reliably in Expo Go, and prove it with tests you actually run.
+
+## Constraints — read first
+
+- **Expo Go compatibility is a hard requirement.** Do not introduce any library that requires a custom dev client or native build (e.g. `@react-native-voice/voice`, `react-native-audio-recorder-player`, or any config-plugin-dependent module). If a fix requires native code, stop and tell me instead of implementing it.
+- This is a **pnpm-only monorepo** (npm is blocked by a preinstall guard). Use `pnpm` from the workspace root for all installs/scripts. Don't touch `pnpm-workspace.yaml` overrides or the `minimumReleaseAge` setting.
+- No new third-party APIs or paid services. The existing backend transcription path stays; fix the pipeline, don't replace it.
+- Don't refactor unrelated code. Keep the diff focused on the STT flow.
+
+## Step 1 — Diagnose before changing anything
+
+Trace the full STT path end to end: mic permission request → `expo-av` recording setup → recording file (URI, format, size) → upload to the backend → backend transcription call → response back to the UI. Add temporary structured logging at each stage so the failure point is unambiguous, and report to me what you find before you fix it.
+
+Check these known Expo Go failure modes specifically, in order of likelihood:
+
+1. **Backend URL unreachable from the phone.** In Expo Go the app runs on my physical iPhone, so any `localhost` / `127.0.0.1` / Replit-internal backend URL will fail. The app must call the backend's publicly reachable URL. Verify which URL the STT upload actually uses vs. what the working features use.
+2. **iOS audio mode not set for recording.** Recording on iOS requires `Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true })` before starting, and it should be reset after stopping so playback isn't stuck in receiver mode.
+3. **Permission flow.** Confirm `Audio.requestPermissionsAsync()` is awaited and its result is checked before recording, with a clear user-facing message when denied. (`NSMicrophoneUsageDescription` in app config doesn't apply inside Expo Go, but note it anyway for our future native builds.)
+4. **Recording format mismatch.** Expo Go on iOS records `.m4a`/`.caf` depending on the preset. Confirm the backend's transcription endpoint accepts the exact container/codec being produced. If not, set explicit `Recording` options (e.g. `Audio.RecordingOptionsPresets.HIGH_QUALITY` or a custom preset) to produce a format the backend accepts — change the client options rather than adding server-side transcoding.
+5. **Upload construction.** React Native `FormData` file parts need `{ uri, name, type }` with a correct MIME type, and no manually set `Content-Type` header (the boundary must be auto-generated). Verify the file at the recorded URI is non-empty before upload.
+6. **expo-av deprecation quirks on SDK 54.** We're on Expo SDK 54 where `expo-av` is deprecated in favor of `expo-audio`. If the root cause is an SDK-54 `expo-av` recording bug, migrating just the recording code to `expo-audio` is acceptable — but only if it stays fully Expo Go-compatible, and migrate only the STT recording path, nothing else.
+
+## Step 2 — Fix
+
+Implement the minimal fix for the actual root cause found in Step 1. Explain the root cause to me in one or two sentences before showing the diff.
+
+Also harden the flow while you're in there:
+- Handle recording-start failure, zero-byte recordings, upload failure, and backend transcription errors with distinct user-facing error states (not a silent failure or a generic toast).
+- Add a timeout on the transcription request so the UI can't hang indefinitely.
+- Ensure the recording is stopped and unloaded on unmount/navigation so the mic isn't left open.
+
+## Step 3 — Test (actually run these)
+
+Automated — run them and paste the output; do not just write them:
+- Unit tests for the recording→upload module: correct audio mode config, permission-denied path, FormData shape (uri/name/type present, correct MIME), timeout and error-state handling.
+- Backend endpoint test: POST a small real audio fixture in the exact format the app records (m4a) and assert a successful transcription response; also assert a clean 4xx (not a 500) for an unsupported format and an empty file.
+- A test that the STT client uses the same base URL configuration as the rest of the app's API calls (regression guard against the localhost issue).
+
+Manual — give me a short checklist to run in Expo Go on my iPhone, covering:
+1. First-launch permission prompt appears and denial shows the right message.
+2. Record a short English phrase → correct transcription appears.
+3. Record in a second supported language → correct transcription.
+4. A longer clip (~20–30s) transcribes without timeout.
+5. Speaking with background noise degrades gracefully (result or clear error, no crash/hang).
+6. Rapidly starting/stopping recording twice doesn't wedge the mic or crash.
+7. Leaving the screen mid-recording cleans up (audio playback elsewhere in the app still works after).
+
+## Step 4 — Report
+
+Summarize: root cause, files changed, test results (with real output), anything that will behave differently in a future native build vs. Expo Go, and the temporary debug logging you removed (remove it before finishing).
