@@ -12,11 +12,16 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HistoryProvider } from "@/contexts/HistoryContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { setBaseUrl } from "@workspace/api-client-react";
+
+// Bootstrap i18n before anything renders. This import is a side-effect that
+// calls i18n.init() synchronously using the device locale as the initial language.
+import i18n, { LANG_STORAGE_KEY } from "@/lib/i18n";
 
 const apiBaseUrl = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -69,6 +74,16 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+
+  // Restore persisted UI language on first mount. i18n was already
+  // initialised with the device locale; this overrides with the user's choice.
+  useEffect(() => {
+    AsyncStorage.getItem(LANG_STORAGE_KEY).then((stored) => {
+      if (stored && stored !== i18n.language) {
+        i18n.changeLanguage(stored).catch(() => {});
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

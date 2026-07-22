@@ -18,6 +18,7 @@ import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 
 import { useColors } from "@/hooks/useColors";
 import { useHistory } from "@/contexts/HistoryContext";
@@ -95,6 +96,7 @@ async function pickAndResize(
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function SnapshotScreen() {
+  const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { addEntry } = useHistory();
@@ -200,7 +202,7 @@ export default function SnapshotScreen() {
         `${err.message}\n\nThe app admin needs to add a valid OCR_SPACE_API_KEY secret in the Replit Secrets panel.`,
       );
     } else {
-      setErrorMessage(err.message || "Something went wrong. Please try again.");
+      setErrorMessage(err.message || t("snapshot.errorFallback"));
     }
     setPhase("error");
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -384,7 +386,7 @@ export default function SnapshotScreen() {
   const LangBar = (
     <View style={[styles.langBar, { borderBottomColor: colors.border }]}>
       <Text style={[styles.langBarLabel, { color: colors.mutedForeground }]}>
-        Translate to
+        {t("translate.toLabel")}
       </Text>
       <TouchableOpacity
         style={[styles.langChip, { backgroundColor: colors.accent, borderColor: colors.border }]}
@@ -425,7 +427,7 @@ export default function SnapshotScreen() {
                 { color: captureMode === m ? colors.primaryForeground : colors.mutedForeground },
               ]}
             >
-              {m === "text" ? "Text" : "Menu"}
+              {m === "text" ? t("snapshot.modeText") : t("snapshot.modeMenu")}
             </Text>
           </TouchableOpacity>
         ))}
@@ -452,7 +454,7 @@ export default function SnapshotScreen() {
   const renderIdle = () => (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("snapshot.title")}</Text>
       </View>
 
       {LangBar}
@@ -462,10 +464,10 @@ export default function SnapshotScreen() {
         <View style={[styles.permBanner, { backgroundColor: colors.destructive + "14", borderColor: colors.destructive + "50" }]}>
           <Feather name="alert-circle" size={16} color={colors.destructive} />
           <Text style={[styles.permText, { color: colors.destructive }]}>
-            Permission denied.{" "}
+            {t("snapshot.permDenied")}{" "}
           </Text>
           <TouchableOpacity onPress={() => Linking.openSettings()}>
-            <Text style={[styles.permLink, { color: colors.destructive }]}>Open Settings</Text>
+            <Text style={[styles.permLink, { color: colors.destructive }]}>{t("conversation.openSettings")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -477,10 +479,10 @@ export default function SnapshotScreen() {
         </View>
 
         <Text style={[styles.idleTitle, { color: colors.foreground }]}>
-          Translate text in photos
+          {t("snapshot.idleTitle")}
         </Text>
         <Text style={[styles.idleSubtitle, { color: colors.mutedForeground }]}>
-          Point your camera at a sign, menu, label, or any text — LingoSwap will read and translate it.
+          {t("snapshot.idleSubtitle")}
         </Text>
 
         {/* Primary CTA */}
@@ -490,7 +492,7 @@ export default function SnapshotScreen() {
           activeOpacity={0.85}
         >
           <Feather name="camera" size={20} color="#FFFFFF" />
-          <Text style={styles.primaryBtnText}>Take photo</Text>
+          <Text style={styles.primaryBtnText}>{t("snapshot.takePhoto")}</Text>
         </TouchableOpacity>
 
         {/* Secondary CTA */}
@@ -500,7 +502,7 @@ export default function SnapshotScreen() {
           activeOpacity={0.8}
         >
           <Feather name="image" size={18} color={colors.foreground} />
-          <Text style={[styles.secondaryBtnText, { color: colors.foreground }]}>Choose from library</Text>
+          <Text style={[styles.secondaryBtnText, { color: colors.foreground }]}>{t("snapshot.chooseLibrary")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -513,7 +515,7 @@ export default function SnapshotScreen() {
       contentContainerStyle={[styles.processingScroll, { paddingBottom: bottomPadding }]}
     >
       <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("snapshot.title")}</Text>
       </View>
 
       {ImagePreview}
@@ -523,14 +525,14 @@ export default function SnapshotScreen() {
         <Text style={[styles.processingLabel, { color: colors.foreground }]}>
           {reanalyzeNote
             ? captureMode === "menu"
-              ? "Re-reading as a menu…"
-              : "Re-reading as text…"
+              ? t("snapshot.rereadingMenu")
+              : t("snapshot.rereadingText")
             : captureMode === "menu"
-              ? "Reading menu…"
-              : "Reading text…"}
+              ? t("snapshot.readingMenu")
+              : t("snapshot.readingText")}
         </Text>
         <Text style={[styles.processingHint, { color: colors.mutedForeground }]}>
-          Translating to {targetLanguage}
+          {t("snapshot.translatingTo", { lang: targetLanguage })}
         </Text>
       </View>
 
@@ -539,7 +541,7 @@ export default function SnapshotScreen() {
         onPress={resetToIdle}
         activeOpacity={0.7}
       >
-        <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+        <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>{t("common.cancel")}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -548,7 +550,7 @@ export default function SnapshotScreen() {
   const renderResult = () => (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("snapshot.title")}</Text>
         <TouchableOpacity onPress={resetToIdle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Feather name="x" size={22} color={colors.mutedForeground} />
         </TouchableOpacity>
@@ -565,7 +567,7 @@ export default function SnapshotScreen() {
         {/* Language re-selector */}
         <View style={[styles.resultLangRow, { borderColor: colors.border }]}>
           <Text style={[styles.resultLangLabel, { color: colors.mutedForeground }]}>
-            {detectedLanguage || "Detected"}
+            {detectedLanguage || t("snapshot.detected")}
           </Text>
           <Feather name="arrow-right" size={14} color={colors.accent} />
           <TouchableOpacity
@@ -587,7 +589,7 @@ export default function SnapshotScreen() {
             <View style={styles.retranslatingRow}>
               <ActivityIndicator size="small" color={colors.accent} />
               <Text style={[styles.retranslatingText, { color: colors.mutedForeground }]}>
-                Translating…
+                {t("translate.translating")}
               </Text>
             </View>
           ) : (
@@ -607,7 +609,7 @@ export default function SnapshotScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.originalLabel, { color: colors.mutedForeground }]}>
-                Original
+                {t("snapshot.original")}
               </Text>
               <Feather
                 name={originalExpanded ? "chevron-up" : "chevron-down"}
@@ -639,7 +641,7 @@ export default function SnapshotScreen() {
               color={copiedTranslation ? colors.accent : colors.foreground}
             />
             <Text style={[styles.actionBtnText, { color: copiedTranslation ? colors.accent : colors.foreground }]}>
-              {copiedTranslation ? "Copied" : "Copy"}
+              {copiedTranslation ? t("snapshot.copied") : t("snapshot.copy")}
             </Text>
           </TouchableOpacity>
 
@@ -649,7 +651,7 @@ export default function SnapshotScreen() {
             activeOpacity={0.8}
           >
             <Feather name="camera" size={16} color={colors.foreground} />
-            <Text style={[styles.actionBtnText, { color: colors.foreground }]}>Retake</Text>
+            <Text style={[styles.actionBtnText, { color: colors.foreground }]}>{t("snapshot.retake")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -671,7 +673,7 @@ export default function SnapshotScreen() {
               color={savedToHistory ? "#FFFFFF" : colors.foreground}
             />
             <Text style={[styles.actionBtnText, { color: savedToHistory ? "#FFFFFF" : colors.foreground }]}>
-              {savedToHistory ? "Saved" : "Save"}
+              {savedToHistory ? t("conversation.saved") : t("common.save")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -739,7 +741,7 @@ export default function SnapshotScreen() {
                 color={copiedItemId === item.id ? colors.accent : colors.foreground}
               />
               <Text style={[styles.menuActionText, { color: colors.foreground }]}>
-                {copiedItemId === item.id ? "Copied" : "Copy"}
+                {copiedItemId === item.id ? t("snapshot.copied") : t("snapshot.copy")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -753,7 +755,7 @@ export default function SnapshotScreen() {
                 color={speakingItemId === item.id ? colors.accent : colors.foreground}
               />
               <Text style={[styles.menuActionText, { color: colors.foreground }]}>
-                {speakingItemId === item.id ? "Speaking…" : "Speak"}
+                {speakingItemId === item.id ? t("snapshot.speaking") : t("snapshot.speak")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -765,7 +767,7 @@ export default function SnapshotScreen() {
   const renderMenuResult = () => (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("snapshot.title")}</Text>
         <TouchableOpacity onPress={resetToIdle} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Feather name="x" size={22} color={colors.mutedForeground} />
         </TouchableOpacity>
@@ -779,10 +781,10 @@ export default function SnapshotScreen() {
               <Feather name="help-circle" size={32} color={colors.mutedForeground} />
             </View>
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              This doesn't look like a menu
+              {t("snapshot.notMenuTitle")}
             </Text>
             <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-              We couldn't find menu items in this photo. Try Text mode to translate it as one block of text.
+              {t("snapshot.notMenuText")}
             </Text>
             <TouchableOpacity
               style={[styles.primaryBtn, { backgroundColor: colors.accent, borderColor: "#000" }]}
@@ -790,13 +792,13 @@ export default function SnapshotScreen() {
               activeOpacity={0.85}
             >
               <Feather name="file-text" size={18} color="#FFFFFF" />
-              <Text style={styles.primaryBtnText}>Switch to Text mode</Text>
+              <Text style={styles.primaryBtnText}>{t("snapshot.switchToText")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.cancelBtn, { borderColor: colors.border, marginTop: 0 }]}
               onPress={resetToIdle}
             >
-              <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Go back</Text>
+              <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>{t("snapshot.goBack")}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -811,7 +813,9 @@ export default function SnapshotScreen() {
               {ModeSelector}
               <View style={[styles.resultLangRow, { borderColor: colors.border, paddingHorizontal: 16 }]}>
                 <Text style={[styles.resultLangLabel, { color: colors.mutedForeground }]}>
-                  {isMenuRetranslating ? "Translating…" : `${menuItems.filter((i) => !i.isSectionHeader).length} items`}
+                  {isMenuRetranslating
+                    ? t("translate.translating")
+                    : t("snapshot.menuItemCount", { count: menuItems.filter((i) => !i.isSectionHeader).length })}
                 </Text>
                 <TouchableOpacity
                   style={[styles.langChip, { backgroundColor: colors.accent, borderColor: colors.border }]}
@@ -834,7 +838,7 @@ export default function SnapshotScreen() {
                 activeOpacity={0.8}
               >
                 <Feather name="camera" size={16} color={colors.foreground} />
-                <Text style={[styles.actionBtnText, { color: colors.foreground }]}>Retake</Text>
+                <Text style={[styles.actionBtnText, { color: colors.foreground }]}>{t("snapshot.retake")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -855,7 +859,7 @@ export default function SnapshotScreen() {
                   color={savedToHistory ? "#FFFFFF" : colors.foreground}
                 />
                 <Text style={[styles.actionBtnText, { color: savedToHistory ? "#FFFFFF" : colors.foreground }]}>
-                  {savedToHistory ? "Saved" : "Save"}
+                  {savedToHistory ? t("conversation.saved") : t("common.save")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -871,7 +875,7 @@ export default function SnapshotScreen() {
   const renderEmpty = () => (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("snapshot.title")}</Text>
       </View>
 
       {ImagePreview}
@@ -881,10 +885,10 @@ export default function SnapshotScreen() {
           <Feather name="eye-off" size={32} color={colors.mutedForeground} />
         </View>
         <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-          No text found
+          {t("snapshot.noTextTitle")}
         </Text>
         <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-          Make sure the text is clear and well-lit, then try again.
+          {t("snapshot.noTextSubtitle")}
         </Text>
         <TouchableOpacity
           style={[styles.primaryBtn, { backgroundColor: colors.accent, borderColor: "#000" }]}
@@ -892,13 +896,13 @@ export default function SnapshotScreen() {
           activeOpacity={0.85}
         >
           <Feather name="camera" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryBtnText}>Retake</Text>
+          <Text style={styles.primaryBtnText}>{t("snapshot.retake")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.cancelBtn, { borderColor: colors.border, marginTop: 0 }]}
           onPress={resetToIdle}
         >
-          <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Go back</Text>
+          <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>{t("snapshot.goBack")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -908,7 +912,7 @@ export default function SnapshotScreen() {
   const renderError = () => (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <View style={[styles.headerBar, { paddingTop: topPadding, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.foreground }]}>Snapshot</Text>
+        <Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("snapshot.title")}</Text>
       </View>
 
       {ImagePreview}
@@ -918,10 +922,10 @@ export default function SnapshotScreen() {
           <Feather name="alert-circle" size={32} color={colors.destructive} />
         </View>
         <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-          Something went wrong
+          {t("snapshot.errorTitle")}
         </Text>
         <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-          {errorMessage || "Please check your connection and try again."}
+          {errorMessage || t("snapshot.errorFallback")}
         </Text>
         <TouchableOpacity
           style={[styles.primaryBtn, { backgroundColor: colors.accent, borderColor: "#000" }]}
@@ -929,13 +933,13 @@ export default function SnapshotScreen() {
           activeOpacity={0.85}
         >
           <Feather name="refresh-cw" size={18} color="#FFFFFF" />
-          <Text style={styles.primaryBtnText}>Retry</Text>
+          <Text style={styles.primaryBtnText}>{t("common.retry")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.cancelBtn, { borderColor: colors.border, marginTop: 0 }]}
           onPress={resetToIdle}
         >
-          <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>Go back</Text>
+          <Text style={[styles.cancelBtnText, { color: colors.mutedForeground }]}>{t("snapshot.goBack")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -963,7 +967,7 @@ export default function SnapshotScreen() {
         }}
         languages={LANGUAGES}
         selected={targetLanguage}
-        title="Translate to"
+        title={t("translate.toLabel")}
       />
     </>
   );

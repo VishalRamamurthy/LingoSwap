@@ -14,8 +14,10 @@ import { Feather } from "@expo/vector-icons";
 import { useHistory, HistoryEntry } from "@/contexts/HistoryContext";
 import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
 
 export default function HistoryScreen() {
+  const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { history, deleteEntry, clearHistory } = useHistory();
@@ -23,11 +25,11 @@ export default function HistoryScreen() {
 
   const handleClearAll = () => {
     if (Platform.OS === "web") {
-      if (confirm("Clear all translation history?")) clearHistory();
+      if (confirm(t("history.clearConfirm"))) clearHistory();
     } else {
-      Alert.alert("Clear History", "Remove all translation history?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Clear All", style: "destructive", onPress: clearHistory },
+      Alert.alert(t("history.clearTitle"), t("history.clearConfirm"), [
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("history.clearAll"), style: "destructive", onPress: clearHistory },
       ]);
     }
   };
@@ -54,7 +56,7 @@ export default function HistoryScreen() {
     if (item.type === "menu") {
       const dishes = item.items.filter((i) => !i.isSectionHeader);
       return {
-        top: `Menu — ${dishes.length} item${dishes.length === 1 ? "" : "s"}`,
+        top: t("history.menuItems", { count: dishes.length }),
         bottom: dishes
           .slice(0, 3)
           .map((i) => i.translatedText || i.originalText)
@@ -64,7 +66,7 @@ export default function HistoryScreen() {
     if (item.type === "conversation") {
       const last = item.turns[item.turns.length - 1];
       return {
-        top: `Conversation — ${item.turns.length} turn${item.turns.length === 1 ? "" : "s"}`,
+        top: t("history.conversationTurns", { count: item.turns.length }),
         bottom: last ? `${last.original} → ${last.translated}` : "",
       };
     }
@@ -156,11 +158,11 @@ export default function HistoryScreen() {
           },
         ]}
       >
-        <Text style={[styles.title, { color: colors.foreground }]}>History</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>{t("history.title")}</Text>
         {history.length > 0 && (
           <TouchableOpacity onPress={handleClearAll} hitSlop={{ top: 8, bottom: 8 }}>
             <Text style={[styles.clearBtn, { color: colors.destructive }]}>
-              Clear
+              {t("history.clear")}
             </Text>
           </TouchableOpacity>
         )}
@@ -177,10 +179,10 @@ export default function HistoryScreen() {
             <Feather name="clock" size={28} color={colors.border} />
           </View>
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            No translations yet
+            {t("history.emptyTitle")}
           </Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Your translated phrases will appear here
+            {t("history.emptyText")}
           </Text>
         </View>
       ) : (

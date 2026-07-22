@@ -6,33 +6,36 @@ import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import { useColors } from "@/hooks/useColors";
 
 function NativeTabLayout() {
+  const { t } = useTranslation();
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
         <Icon sf={{ default: "mic", selected: "mic.fill" }} />
-        <Label>Translate</Label>
+        <Label>{t("tabs.translate")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="snapshot">
         <Icon sf={{ default: "camera.viewfinder", selected: "camera.viewfinder" }} />
-        <Label>Snapshot</Label>
+        <Label>{t("tabs.snapshot")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <Icon sf={{ default: "clock", selected: "clock.fill" }} />
-        <Label>History</Label>
+        <Label>{t("tabs.history")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: "person", selected: "person.fill" }} />
-        <Label>Profile</Label>
+        <Label>{t("tabs.profile")}</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
 
 function ClassicTabLayout() {
+  const { t } = useTranslation();
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -73,7 +76,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Translate",
+          title: t("tabs.translate"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="mic" tintColor={color} size={24} />
@@ -85,7 +88,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="snapshot"
         options={{
-          title: "Snapshot",
+          title: t("tabs.snapshot"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="camera.viewfinder" tintColor={color} size={24} />
@@ -97,7 +100,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: "History",
+          title: t("tabs.history"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="clock" tintColor={color} size={24} />
@@ -109,7 +112,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: t("tabs.profile"),
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="person" tintColor={color} size={24} />

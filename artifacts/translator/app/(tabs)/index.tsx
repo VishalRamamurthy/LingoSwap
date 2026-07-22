@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useTranslateText, useTranscribeAudio } from "@workspace/api-client-react";
 import { Feather } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
 import { useHistory } from "@/contexts/HistoryContext";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -42,6 +43,7 @@ type Mode = "voice" | "text" | "conversation";
 type RecordingState = "idle" | "recording" | "processing";
 
 export default function TranslateScreen() {
+  const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<Mode>("voice");
@@ -230,9 +232,7 @@ export default function TranslateScreen() {
       console.log(`[STT] permission status=${status}, granted=${granted}`);
       if (!granted) {
         // Show a clear, persistent error — haptics alone is not enough.
-        setVoiceError(
-          "Microphone access is required. Please enable it in Settings → LingoSwap."
-        );
+        setVoiceError(t("errors.micDenied"));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
@@ -279,7 +279,7 @@ export default function TranslateScreen() {
 
       if (!uri) {
         console.log("[STT] no uri after stop");
-        setVoiceError("Recording failed to save. Please try again.");
+        setVoiceError(t("errors.recordingFailed"));
         setRecordingState("idle");
         return;
       }
@@ -294,7 +294,7 @@ export default function TranslateScreen() {
       // Guard: a zero-byte (or near-zero) base64 string means nothing was recorded.
       if (base64.length < 10) {
         console.log("[STT] base64 too short, aborting");
-        setVoiceError("Recording was too short or empty. Please try again.");
+        setVoiceError(t("errors.tooShort"));
         setRecordingState("idle");
         return;
       }
@@ -339,7 +339,7 @@ export default function TranslateScreen() {
         if ((err as Error)?.name === "TimeoutError") {
           // TimeoutError is our own synthetic error — show it explicitly since
           // react-query won't surface it as a mutation error.
-          setVoiceError((err as Error).message);
+          setVoiceError(t("errors.timeout"));
         }
         // Non-timeout errors are already in transcribeMutation.isError / errorMessage.
       }
@@ -441,13 +441,13 @@ export default function TranslateScreen() {
   const errorMessage =
     (transcribeMutation.error as Error | undefined)?.message ||
     (translateMutation.error as Error | undefined)?.message ||
-    "Translation failed. Please try again.";
+    t("errors.translationFailed");
 
   const displaySourceLang =
     sourceLanguage === "auto"
       ? detectedLang
         ? detectedLang
-        : "Auto-detect"
+        : t("translate.autoDetect")
       : sourceLanguage;
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top + 12;
@@ -548,7 +548,7 @@ export default function TranslateScreen() {
                 },
               ]}
             >
-              Voice
+              {t("translate.modeVoice")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -572,7 +572,7 @@ export default function TranslateScreen() {
                 },
               ]}
             >
-              Type
+              {t("translate.modeText")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -600,7 +600,7 @@ export default function TranslateScreen() {
                 },
               ]}
             >
-              Talk
+              {t("translate.modeTalk")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -672,17 +672,17 @@ export default function TranslateScreen() {
 
             <Text style={[styles.micHint, { color: colors.mutedForeground }]}>
               {recordingState === "recording"
-                ? "Listening... tap to stop"
+                ? t("translate.listening")
                 : recordingState === "processing"
-                ? "Transcribing..."
+                ? t("translate.transcribing")
                 : translateMutation.isPending
-                ? "Translating..."
-                : "Tap to speak"}
+                ? t("translate.translating")
+                : t("translate.tapToSpeak")}
             </Text>
 
             {recordingState === "idle" && !translatedText && (
               <Text style={[styles.micSubhint, { color: colors.border }]}>
-                Speak in any language
+                {t("translate.speakPrompt")}
               </Text>
             )}
           </View>
@@ -698,7 +698,7 @@ export default function TranslateScreen() {
           >
             <TextInput
               style={[styles.input, { color: colors.foreground }]}
-              placeholder="Type text to translate..."
+              placeholder={t("translate.typePlaceholder")}
               placeholderTextColor={colors.mutedForeground}
               multiline
               value={sourceText}
@@ -728,7 +728,7 @@ export default function TranslateScreen() {
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <Text style={styles.translateBtnText}>Translate</Text>
+                    <Text style={styles.translateBtnText}>{t("translate.translateBtn")}</Text>
                     <Feather name="arrow-right" size={16} color="#fff" />
                   </>
                 )}
@@ -874,7 +874,7 @@ export default function TranslateScreen() {
         onSelect={setSourceLanguage}
         languages={["auto", ...LANGUAGES]}
         selected={sourceLanguage}
-        title="Translate from"
+        title={t("translate.fromLabel")}
       />
 
       <LanguageSelector
@@ -886,7 +886,7 @@ export default function TranslateScreen() {
         }}
         languages={LANGUAGES}
         selected={targetLanguage}
-        title="Translate to"
+        title={t("translate.toLabel")}
       />
     </View>
   );

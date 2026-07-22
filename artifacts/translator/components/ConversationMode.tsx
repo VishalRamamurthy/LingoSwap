@@ -20,6 +20,7 @@ import { useHistory, type ConversationTurnEntry } from "@/contexts/HistoryContex
 import { useTranscribeAudio, useTranslateText } from "@workspace/api-client-react";
 import LanguageSelector from "@/components/LanguageSelector";
 import { LANGUAGES } from "@/constants/languages";
+import { useTranslation } from "react-i18next";
 import { speak, stopSpeaking } from "@/lib/speech";
 import {
   IDLE_STATE,
@@ -39,6 +40,7 @@ type Turn = ConversationTurnEntry & {
 };
 
 export default function ConversationMode() {
+  const { t } = useTranslation();
   const colors = useColors();
   const { addEntry } = useHistory();
 
@@ -359,13 +361,13 @@ export default function ConversationMode() {
     if (activeSide !== side) return "";
     switch (phase) {
       case "recording":
-        return `Listening… ${MAX_RECORDING_SECONDS - seconds}s`;
+        return t("conversation.listening", { seconds: MAX_RECORDING_SECONDS - seconds });
       case "transcribing":
-        return "Transcribing…";
+        return t("conversation.transcribing");
       case "translating":
-        return "Translating…";
+        return t("conversation.translating");
       case "speaking":
-        return "Speaking…";
+        return t("conversation.speaking");
       default:
         return "";
     }
@@ -411,7 +413,7 @@ export default function ConversationMode() {
         </TouchableOpacity>
 
         <Text style={[styles.phaseLabel, { color: isRecording ? colors.destructive : colors.mutedForeground }]}>
-          {label || "Tap to talk"}
+          {label || t("conversation.tapToTalk")}
         </Text>
       </View>
     );
@@ -432,10 +434,10 @@ export default function ConversationMode() {
         <View style={styles.turnErrorRow}>
           <Feather name="alert-circle" size={14} color={colors.destructive} />
           <Text style={[styles.turnErrorText, { color: colors.destructive }]}>
-            {item.original ? "Translation failed" : "Transcription failed"}
+            {item.original ? t("conversation.translationFailed") : t("conversation.transcriptionFailed")}
           </Text>
           <TouchableOpacity onPress={() => retryTurn(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={[styles.turnRetry, { color: colors.accent }]}>Retry</Text>
+            <Text style={[styles.turnRetry, { color: colors.accent }]}>{t("common.retry")}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -458,17 +460,17 @@ export default function ConversationMode() {
         {micDenied && (
           <View style={styles.micDeniedRow}>
             <Text style={[styles.micDeniedText, { color: colors.destructive }]}>
-              Microphone access denied.
+              {t("conversation.micDenied")}
             </Text>
             <TouchableOpacity onPress={() => Linking.openSettings()}>
-              <Text style={[styles.micDeniedLink, { color: colors.destructive }]}>Open Settings</Text>
+              <Text style={[styles.micDeniedLink, { color: colors.destructive }]}>{t("conversation.openSettings")}</Text>
             </TouchableOpacity>
           </View>
         )}
         {turns.length === 0 && !micDenied ? (
           <View style={styles.transcriptEmpty}>
             <Text style={[styles.transcriptEmptyText, { color: colors.mutedForeground }]}>
-              Tap a mic to start the conversation
+              {t("conversation.startPrompt")}
             </Text>
           </View>
         ) : (
@@ -496,7 +498,7 @@ export default function ConversationMode() {
           >
             <Feather name={saved ? "check" : "bookmark"} size={13} color={saved ? "#FFFFFF" : colors.foreground} />
             <Text style={[styles.saveBtnText, { color: saved ? "#FFFFFF" : colors.foreground }]}>
-              {saved ? "Saved" : "Save"}
+              {saved ? t("conversation.saved") : t("common.save")}
             </Text>
           </TouchableOpacity>
         )}
@@ -514,7 +516,7 @@ export default function ConversationMode() {
         }}
         languages={LANGUAGES}
         selected={openSelector === "top" ? topLanguage : bottomLanguage}
-        title="Language"
+        title={t("common.language")}
       />
     </View>
   );

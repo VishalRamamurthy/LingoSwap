@@ -11,12 +11,14 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
 import { useColors } from "@/hooks/useColors";
 import { useAuth, ApiError } from "@/contexts/AuthContext";
 
 type FieldErrors = { name?: string; email?: string; password?: string; confirmPassword?: string };
 
 export default function SignupScreen() {
+  const { t } = useTranslation();
   const colors = useColors();
   const { signup } = useAuth();
   const router = useRouter();
@@ -31,13 +33,13 @@ export default function SignupScreen() {
 
   const validate = (): boolean => {
     const errs: FieldErrors = {};
-    if (!name.trim()) errs.name = "Name is required.";
+    if (!name.trim()) errs.name = t("errors.nameRequired");
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errs.email = "Enter a valid email address.";
+      errs.email = t("errors.invalidEmail");
     if (!password || password.length < 8)
-      errs.password = "Password must be at least 8 characters.";
+      errs.password = t("errors.passwordTooShort");
     if (password !== confirmPassword)
-      errs.confirmPassword = "Passwords don't match.";
+      errs.confirmPassword = t("errors.passwordMismatch");
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -53,7 +55,7 @@ export default function SignupScreen() {
       if (e instanceof ApiError && e.field) {
         setFieldErrors((prev) => ({ ...prev, [e.field!]: e.message }));
       } else {
-        setGlobalError(e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
+        setGlobalError(e instanceof ApiError ? e.message : t("errors.generic"));
       }
     } finally {
       setLoading(false);
@@ -71,7 +73,7 @@ export default function SignupScreen() {
         <View style={styles.header}>
           <Text style={[styles.wordmark, { color: colors.foreground }]}>LingoSwap</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Create your account
+            {t("auth.createTitle")}
           </Text>
         </View>
 
@@ -83,10 +85,10 @@ export default function SignupScreen() {
           )}
 
           <Field
-            label="Name"
+            label={t("auth.name")}
             value={name}
             onChangeText={(v) => { setName(v); setFieldErrors((p) => ({ ...p, name: undefined })); }}
-            placeholder="Your name"
+            placeholder={t("auth.namePlaceholder")}
             error={fieldErrors.name}
             autoCapitalize="words"
             returnKeyType="next"
@@ -94,10 +96,10 @@ export default function SignupScreen() {
             editable={!loading}
           />
           <Field
-            label="Email"
+            label={t("auth.email")}
             value={email}
             onChangeText={(v) => { setEmail(v); setFieldErrors((p) => ({ ...p, email: undefined })); }}
-            placeholder="you@example.com"
+            placeholder={t("auth.emailPlaceholder")}
             error={fieldErrors.email}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -106,10 +108,10 @@ export default function SignupScreen() {
             editable={!loading}
           />
           <Field
-            label="Password"
+            label={t("auth.password")}
             value={password}
             onChangeText={(v) => { setPassword(v); setFieldErrors((p) => ({ ...p, password: undefined })); }}
-            placeholder="At least 8 characters"
+            placeholder={t("auth.passwordHint")}
             error={fieldErrors.password}
             secureTextEntry
             returnKeyType="next"
@@ -117,10 +119,10 @@ export default function SignupScreen() {
             editable={!loading}
           />
           <Field
-            label="Confirm password"
+            label={t("auth.confirmPassword")}
             value={confirmPassword}
             onChangeText={(v) => { setConfirmPassword(v); setFieldErrors((p) => ({ ...p, confirmPassword: undefined })); }}
-            placeholder="Repeat password"
+            placeholder={t("auth.confirmPasswordPlaceholder")}
             error={fieldErrors.confirmPassword}
             secureTextEntry
             returnKeyType="done"
@@ -138,18 +140,18 @@ export default function SignupScreen() {
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.buttonText}>Create account</Text>
+              <Text style={styles.buttonText}>{t("auth.createAccount")}</Text>
             )}
           </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
-            Already have an account?{" "}
+            {t("auth.haveAccount")}{" "}
           </Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity>
-              <Text style={[styles.footerLink, { color: colors.accent }]}>Sign in</Text>
+              <Text style={[styles.footerLink, { color: colors.accent }]}>{t("auth.signIn")}</Text>
             </TouchableOpacity>
           </Link>
         </View>
