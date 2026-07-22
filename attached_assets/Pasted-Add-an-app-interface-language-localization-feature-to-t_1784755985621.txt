@@ -1,0 +1,25 @@
+Add an app interface language (localization) feature to the translator app at artifacts/translator.
+
+WHAT TO BUILD:
+- A "Language / Idioma / Langue" selector in the Profile tab that lets the user choose the language the app's UI is displayed in — all tab names, labels, buttons, placeholders, and error messages.
+- The available UI languages must be the same set of languages the app already supports for translation. Show each option in its own native name (e.g., English, Español, Français, 日本語, العربية).
+- On first launch, default to the device's system language if it's supported; otherwise fall back to English.
+- Persist the user's choice locally (AsyncStorage) so it survives app restarts.
+- Switching languages must update the UI immediately, no app restart required.
+
+IMPLEMENTATION CONSTRAINTS:
+- Use a client-side i18n library (e.g., i18next + react-i18next, with expo-localization for device-language detection). Do NOT add any new third-party APIs or paid services — UI strings must come from static translation files (JSON) bundled with the app.
+- Extract all hardcoded UI strings into locale files in a shared location (e.g., under lib/ or a locales/ directory) so they're maintainable.
+- If any supported language is right-to-left (e.g., Arabic), make sure text renders correctly and layouts don't break.
+- This is a pnpm-only monorepo — install packages with pnpm only, never npm.
+- Everything must keep working under Expo Go on a physical iPhone — no native modules that require a custom dev build.
+
+DO NOT BREAK EXISTING FEATURES:
+- Translate, History, Profile, and Snapshot (camera → OCR via OCR.space → translation) must all work exactly as before.
+- Leave the speech-to-text recording flow unchanged.
+- Do not modify the backend at artifacts/api-server unless strictly necessary, and do not change the list of translation languages itself — only reuse it as the source for the UI language options.
+
+TESTING (required — actually run these, don't just write them):
+- Add tests verifying: the selector renders all supported languages, selecting one changes the UI strings, the choice persists after reload, and an unsupported device language falls back to English.
+- Run the new tests AND the full existing test suite, and show me the passing output before you finish.
+- Confirm Translate, History, and Snapshot still function after the change.
